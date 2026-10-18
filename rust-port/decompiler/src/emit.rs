@@ -5,10 +5,16 @@ use std::fmt::Write;
 use crate::{image::ImageModel, provenance};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReturnKind { U64, Pointer }
+pub enum ReturnKind { U8, U16, U32, U64, Pointer }
 impl ReturnKind {
-    pub fn name(self)->&'static str { match self {Self::U64=>"u64",Self::Pointer=>"pointer"} }
-    pub fn parse(value:&str)->Result<Self,String> {match value {"u64"=>Ok(Self::U64),"pointer"=>Ok(Self::Pointer),_=>Err("--return requires u64 or pointer".into())}}
+    pub fn name(self)->&'static str { match self {Self::U8=>"u8",Self::U16=>"u16",Self::U32=>"u32",Self::U64=>"u64",Self::Pointer=>"pointer"} }
+    pub fn parse(value:&str)->Result<Self,String> {match value {
+        "u8"=>Ok(Self::U8),"u16"=>Ok(Self::U16),"u32"=>Ok(Self::U32),"u64"=>Ok(Self::U64),"pointer"=>Ok(Self::Pointer),
+        _=>Err("--return requires u8, u16, u32, u64 or pointer".into()),
+    }}
+    /// SysV defines only the low bits of RAX for a narrow integer result, so
+    /// only those bits must be known; the C result is their zero extension.
+    fn integer_width(self)->Option<u8> { match self {Self::U8=>Some(8),Self::U16=>Some(16),Self::U32=>Some(32),Self::U64=>Some(64),Self::Pointer=>None} }
 }
 #[derive(Debug, Clone)]
 pub struct EmbeddedImage { pub id:u32, pub address:u64, pub size:usize }
@@ -117,11 +123,15 @@ pub fn emit_c_with_image(function:&LiftedFunction,name:&str,image:Result<&ImageM
                 if return_kind==ReturnKind::Pointer && state[0]&provenance::IMAGE==0 {
                     return Err("pointer result requires image provenance; scalar, stack and unknown returns are unsupported".into());
                 }
-                if return_kind==ReturnKind::U64 && state[0]==provenance::IMAGE {
+                if return_kind!=ReturnKind::Pointer && state[0]==provenance::IMAGE {
                     return Err("RIP-relative pointer result requires --return pointer; relocation-derived numeric addresses are unsupported".into());
                 }
                 out.push_str("  if(s.r[4].p!=1 || rg_need(s.r[4],64)!=RG_ENTRY_SP) rg_fail();\n");
-                out.push_str(if return_kind==ReturnKind::Pointer {"  return rg_pointer_result(&s,s.r[0]);\n"}else{"  return rg_num(s.r[0],64);\n"});terminal=true;
+                match return_kind.integer_width() {
+                    Some(width)=>writeln!(out,"  return rg_num(s.r[0],{width});").unwrap(),
+                    None=>out.push_str("  return rg_pointer_result(&s,s.r[0]);\n"),
+                }
+                terminal=true;
             }
             Op::Nop=>{}
         }
@@ -153,4 +163,29 @@ pub fn emit_c_with_image(function:&LiftedFunction,name:&str,image:Result<&ImageM
     prefix.push_str(&out);
     if prefix.len()>32*1024*1024 {return Err("32 MiB emitted C limit exceeded".into());}
     Ok(Emitted{c:prefix,function_name,instruction_count:function.instructions.len(),image_objects})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lift::lift_function;
+
+    #[test]
+    fn narrow_returns_require_only_their_low_bits() {
+        // GCC -O2 bool is_zero(int): test edi,edi; sete al; ret
+        let lifted=lift_function(&[0x85,0xff,0x0f,0x94,0xc0,0xc3],0x1000).unwrap();
+        for (kind,width) in [(ReturnKind::U8,8),(ReturnKind::U16,16),(ReturnKind::U32,32),(ReturnKind::U64,64)] {
+            let c=emit_c_with_image(&lifted,"is_zero",Err("no image"),kind).unwrap().c;
+            assert!(c.contains(&format!("return rg_num(s.r[0],{width});")),"{kind:?}");
+        }
+        assert!(emit_c_with_image(&lifted,"is_zero",Err("no image"),ReturnKind::Pointer).is_err());
+    }
+
+    #[test]
+    fn return_kind_names_round_trip() {
+        for kind in [ReturnKind::U8,ReturnKind::U16,ReturnKind::U32,ReturnKind::U64,ReturnKind::Pointer] {
+            assert_eq!(ReturnKind::parse(kind.name()),Ok(kind));
+        }
+        assert!(ReturnKind::parse("i32").is_err());
+    }
 }

@@ -26,7 +26,7 @@ fn images_json(objects:&[EmbeddedImage])->String {
     format!("[{}]",objects.iter().map(|o|format!("{{\"id\":{},\"address_hex\":\"0x{:x}\",\"size\":{}}}",o.id,o.address,o.size)).collect::<Vec<_>>().join(","))
 }
 fn help() {
-    println!("rust-ghidra functions INPUT\nrust-ghidra decompile INPUT (--function NAME | --address 0xVMA --size N) [--return u64|pointer] --output NEW\nrust-ghidra analyze INPUT --output NEW [--max-functions 100] [--return u64|pointer]\nStandalone Rust x86-64 little-endian ELF scalar decompiler. No Ghidra/Java runtime.\nOutput is guarded GNU C11 using a six-uint64 SysV input model; unsupported code fails explicitly.\nLimits: 128 MiB input, 4096 program headers, 1 MiB/65536 reachable instructions per function.");
+    println!("rust-ghidra functions INPUT\nrust-ghidra decompile INPUT (--function NAME | --address 0xVMA --size N) [--return u8|u16|u32|u64|pointer] --output NEW\nrust-ghidra analyze INPUT --output NEW [--max-functions 100] [--return u8|u16|u32|u64|pointer]\nStandalone Rust x86-64 little-endian ELF scalar decompiler. No Ghidra/Java runtime.\nOutput is guarded GNU C11 using a six-uint64 SysV input model; unsupported code fails explicitly.\nLimits: 128 MiB input, 4096 program headers, 1 MiB/65536 reachable instructions per function.");
 }
 
 fn analyze(input:&Path,args:&[std::ffi::OsString])->Result<u8,String> {

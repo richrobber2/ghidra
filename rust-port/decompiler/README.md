@@ -28,9 +28,15 @@ For a read-only pointer result, choose its result model explicitly:
   --return pointer --output /workspace/new-zlib-version
 ```
 
-`--return u64` is the default. `--return pointer` emits a `const unsigned char *`
-result into immutable static image data. `analyze` also accepts either result
-model for the whole batch; it does not infer each function's prototype.
+`--return u64` is the default. `--return u8`, `u16` and `u32` model narrower
+integer results: SysV defines only those low bits of RAX, so only they must be
+known, and the generated `uint64_t` result is their zero extension. Use `u8`
+for `bool`/`char` results computed with `SETcc`, which leave the rest of RAX
+undefined and therefore always abort under `u64`. `--return pointer` emits a
+`const unsigned char *` result into immutable static image data. `analyze`
+accepts one result model for the whole batch; it does not infer each
+function's prototype, so a `u64` batch can report a narrow-result function as
+decompiled even though its guards abort at run time.
 
 Every output directory must be new. The built command runs without activation;
 the build script uses this component's target directory and cached, locked
