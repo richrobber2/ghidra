@@ -15,11 +15,12 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-GHIDRA = Path('/workspace/ghidra')
-JAVA = Path('/workspace/toolchains/jdk-25.0.4.1/bin')
+sys.path.insert(0, str(ROOT.parent))
+from localenv import GHIDRA, JAVA  # noqa: E402
 U64 = (1 << 64) - 1
 I64 = (1 << 63) - 1
 COMMON = ('class_bits', 'header_little_endian', 'phnum', 'phentsize',

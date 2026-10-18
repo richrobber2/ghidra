@@ -14,12 +14,13 @@ from pathlib import Path
 import random
 import struct
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 REVIEW = ROOT / "review"
 CASES = REVIEW / "cases"
-GHIDRA = Path("/workspace/ghidra")
-JAVA = Path("/workspace/toolchains/jdk-25.0.4.1/bin")
+sys.path.insert(0, str(ROOT))
+from localenv import GHIDRA, JAVA  # noqa: E402
 KEYS = ("accepted", "class_bits", "header_little_endian", "declared_little_endian",
         "type", "machine", "version", "entry_hex", "phoff_hex", "shoff_hex", "flags",
         "ehsize", "phentsize", "phnum", "shentsize", "shnum", "shstrndx")

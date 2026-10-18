@@ -13,12 +13,16 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
 PORT = ROOT.parent
-WRAPPER = Path('/workspace/ghidra-agent/ghidra-agent')
-ENGINE = Path('/workspace/ghidra/Ghidra/Features/Decompiler/build/os/linux_x86_64/decompile')
+sys.path.insert(0, str(ROOT.parents[1]))
+from localenv import DECOMPILE_ENGINE, GHIDRA_AGENT  # noqa: E402
+
+WRAPPER = GHIDRA_AGENT / 'ghidra-agent'
+ENGINE = DECOMPILE_ENGINE
 ENGINE_SHA = '876c28d48c07126e5db94946c10719eeb96b057c9271daa0114df34e598f262a'
 JOBS = [
     dict(name='c-O2', relative='results/semantics-02/original/scalar-O2.so',
