@@ -6,7 +6,7 @@
     "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/UnlimitedByteProviderWrapper.java": "9c3e67d5a452b56cea1ac4ecdb8d1f5f721888fe96518b1aceb6e161ff737b2f",
     "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/BinaryReader.java": "0821e053a862f18bf7895f2298ffc02ee5809310d8c5faf74af03afb562c3d10",
     "/workspace/ghidra-rust-port/Cargo.toml": "006b0b9a7e20bf8eed366b804ccaaabc936f089b41dd88e7fadb68f278c8c022",
-    "/workspace/ghidra-rust-port/src/lib.rs": "bec6868cbf0c22bf598a964420cb00eb9a13efeffbf1ecc5b7859c7565d15d86"
+    "/workspace/ghidra-rust-port/src/lib.rs": "df0256f7a5769c8f995c3dc5db44df55678e33812080e6e15da6b3085d1a9acd"
   },
   "boundary": {
     "header": "ElfHeader(ByteProvider, Consumer<String>)",

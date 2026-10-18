@@ -6,7 +6,9 @@
 //! complete values, bounds and permissions on every executed operation. Stack
 //! contents are one deliberately coarse union; no alias or slot claim is made.
 
-use crate::lift::{BinaryKind, LiftedFunction, Memory, Op, Operand, RegView, UnaryKind, MAX_INSTRUCTIONS};
+use crate::lift::{
+    BinaryKind, LiftedFunction, MAX_INSTRUCTIONS, Memory, Op, Operand, RegView, UnaryKind,
+};
 use std::collections::{BTreeMap, VecDeque};
 
 pub const NUM: u8 = 1;
@@ -29,7 +31,9 @@ struct State {
 pub fn memory_admissible(memory: &Memory, regs: &[u8; 16]) -> bool {
     memory.rip_relative_address.is_some()
         || matches!(memory.base, Some(4 | 5))
-        || [memory.base, memory.index].into_iter().flatten()
+        || [memory.base, memory.index]
+            .into_iter()
+            .flatten()
             .any(|r| regs.get(r as usize).is_some_and(|v| v & POINTER != 0))
 }
 
@@ -40,34 +44,57 @@ fn narrow(kinds: u8) -> u8 {
 fn pairwise(a: u8, b: u8, mut operation: impl FnMut(u8, u8) -> u8) -> u8 {
     let mut result = 0;
     for left in KINDS {
-        if a & left == 0 { continue; }
+        if a & left == 0 {
+            continue;
+        }
         for right in KINDS {
-            if b & right != 0 { result |= operation(left, right); }
+            if b & right != 0 {
+                result |= operation(left, right);
+            }
         }
     }
     result
 }
 
 fn add_kind(a: u8, b: u8, subtract: bool) -> u8 {
-    if a == INVALID || b == INVALID { return INVALID; }
+    if a == INVALID || b == INVALID {
+        return INVALID;
+    }
     if a == UNKNOWN || b == UNKNOWN {
         // Unknown numeric bits may abort before an address is formed, but do
         // not erase a possible pointer on the other operand.
         let pointer = (a | b) & POINTER;
-        return UNKNOWN | if subtract && a == UNKNOWN && pointer != 0 { INVALID } else { pointer };
+        return UNKNOWN
+            | if subtract && a == UNKNOWN && pointer != 0 {
+                INVALID
+            } else {
+                pointer
+            };
     }
-    if a == NUM && b == NUM { return NUM; }
-    if a & POINTER != 0 && b == NUM { return a; }
-    if !subtract && a == NUM && b & POINTER != 0 { return b; }
-    if subtract && a == b && a & POINTER != 0 { return NUM; }
+    if a == NUM && b == NUM {
+        return NUM;
+    }
+    if a & POINTER != 0 && b == NUM {
+        return a;
+    }
+    if !subtract && a == NUM && b & POINTER != 0 {
+        return b;
+    }
+    if subtract && a == b && a & POINTER != 0 {
+        return NUM;
+    }
     INVALID
 }
 
 fn address_kind(memory: &Memory, state: &State) -> u8 {
-    if memory.rip_relative_address.is_some() { return IMAGE; }
+    if memory.rip_relative_address.is_some() {
+        return IMAGE;
+    }
     let a = memory.base.map(|r| state.regs[r as usize]).unwrap_or(NUM);
     let mut b = memory.index.map(|r| state.regs[r as usize]).unwrap_or(NUM);
-    if memory.scale != 1 { b = narrow(b); }
+    if memory.scale != 1 {
+        b = narrow(b);
+    }
     pairwise(a, b, |a, b| add_kind(a, b, false))
 }
 
@@ -77,9 +104,19 @@ fn stack_address(memory: &Memory, state: &State) -> bool {
 }
 
 fn load(memory: &Memory, state: &State) -> u8 {
-    if !stack_address(memory, state) { return NUM; }
-    if memory.width == 64 { NUM | UNKNOWN | state.stack }
-    else { NUM | UNKNOWN | if state.stack & (POINTER | INVALID) != 0 { INVALID } else { 0 } }
+    if !stack_address(memory, state) {
+        return NUM;
+    }
+    if memory.width == 64 {
+        NUM | UNKNOWN | state.stack
+    } else {
+        NUM | UNKNOWN
+            | if state.stack & (POINTER | INVALID) != 0 {
+                INVALID
+            } else {
+                0
+            }
+    }
 }
 
 fn read(operand: &Operand, state: &State) -> u8 {
@@ -87,7 +124,11 @@ fn read(operand: &Operand, state: &State) -> u8 {
         Operand::Imm(_) => NUM,
         Operand::Reg(reg) => {
             let value = state.regs[reg.family as usize];
-            if reg.width == 64 { value } else { narrow(value) }
+            if reg.width == 64 {
+                value
+            } else {
+                narrow(value)
+            }
         }
         Operand::Mem(memory) => load(memory, state),
     }
@@ -106,9 +147,13 @@ fn write(state: &mut State, operand: &Operand, value: u8) {
     match operand {
         Operand::Reg(reg) => write_reg(state, *reg, value),
         Operand::Mem(memory) if stack_address(memory, state) => {
-            state.stack |= if memory.width == 64 { value } else { narrow(value) };
+            state.stack |= if memory.width == 64 {
+                value
+            } else {
+                narrow(value)
+            };
         }
-        _ => {},
+        _ => {}
     }
 }
 
@@ -120,10 +165,17 @@ fn transfer(op: &Op, input: State) -> State {
             write_reg(&mut state, *dst, narrow(read(src, &input)));
         }
         Op::Lea { dst, address } => write_reg(&mut state, *dst, address_kind(address, &input)),
-        Op::Binary { kind, dst, left, right } => {
+        Op::Binary {
+            kind,
+            dst,
+            left,
+            right,
+        } => {
             let a = read(left, &input);
             let b = read(right, &input);
-            let result = if left == right && matches!(kind, BinaryKind::Xor | BinaryKind::Sub | BinaryKind::Sbb) {
+            let result = if left == right
+                && matches!(kind, BinaryKind::Xor | BinaryKind::Sub | BinaryKind::Sbb)
+            {
                 NUM
             } else if matches!(kind, BinaryKind::Add | BinaryKind::Sub) {
                 pairwise(a, b, |a, b| add_kind(a, b, *kind == BinaryKind::Sub))
@@ -132,17 +184,27 @@ fn transfer(op: &Op, input: State) -> State {
                     if a == INVALID || b == INVALID || (a | b) & POINTER != 0 {
                         // Stack alignment AND is supported by the runtime for
                         // selected masks; retaining STACK admits its guard.
-                        if *kind == BinaryKind::And && a == STACK && b == NUM { STACK | INVALID }
-                        else { INVALID }
-                    } else if a == UNKNOWN || b == UNKNOWN { UNKNOWN } else { NUM }
+                        if *kind == BinaryKind::And && a == STACK && b == NUM {
+                            STACK | INVALID
+                        } else {
+                            INVALID
+                        }
+                    } else if a == UNKNOWN || b == UNKNOWN {
+                        UNKNOWN
+                    } else {
+                        NUM
+                    }
                 })
             };
             write(&mut state, dst, result);
         }
         Op::Unary { kind, dst } => {
             let value = read(dst, &input);
-            let result = if matches!(kind, UnaryKind::Inc | UnaryKind::Dec) { value }
-                else { narrow(value) };
+            let result = if matches!(kind, UnaryKind::Inc | UnaryKind::Dec) {
+                value
+            } else {
+                narrow(value)
+            };
             write(&mut state, dst, result);
         }
         Op::ConditionalMove { dst, src, .. } => {
@@ -157,7 +219,7 @@ fn transfer(op: &Op, input: State) -> State {
             state.regs[4] = input.regs[5];
             state.regs[5] = NUM | UNKNOWN | input.stack;
         }
-        Op::Compare { .. } | Op::Jump { .. } | Op::Branch { .. } | Op::Return | Op::Nop => {},
+        Op::Compare { .. } | Op::Jump { .. } | Op::Branch { .. } | Op::Return | Op::Nop => {}
     }
     state
 }
@@ -167,22 +229,33 @@ fn valid_reg(reg: RegView) -> bool {
 }
 
 fn valid_memory(memory: &Memory) -> bool {
-    memory.base.is_none_or(|r| r < 16) && memory.index.is_none_or(|r| r < 16)
-        && matches!(memory.scale, 1 | 2 | 4 | 8) && matches!(memory.width, 8 | 16 | 32 | 64)
+    memory.base.is_none_or(|r| r < 16)
+        && memory.index.is_none_or(|r| r < 16)
+        && matches!(memory.scale, 1 | 2 | 4 | 8)
+        && matches!(memory.width, 8 | 16 | 32 | 64)
 }
 
 fn valid_operand(operand: &Operand) -> bool {
-    match operand { Operand::Reg(r) => valid_reg(*r), Operand::Mem(m) => valid_memory(m), Operand::Imm(_) => true }
+    match operand {
+        Operand::Reg(r) => valid_reg(*r),
+        Operand::Mem(m) => valid_memory(m),
+        Operand::Imm(_) => true,
+    }
 }
 
 fn valid_op(op: &Op) -> bool {
     match op {
         Op::Move { dst, src } => valid_operand(dst) && valid_operand(src),
-        Op::MoveZeroExtend { dst, src } | Op::MoveSignExtend { dst, src }
-            | Op::ConditionalMove { dst, src, .. } => valid_reg(*dst) && valid_operand(src),
+        Op::MoveZeroExtend { dst, src }
+        | Op::MoveSignExtend { dst, src }
+        | Op::ConditionalMove { dst, src, .. } => valid_reg(*dst) && valid_operand(src),
         Op::Lea { dst, address } => valid_reg(*dst) && valid_memory(address),
-        Op::Binary { dst, left, right, .. } => valid_operand(dst) && valid_operand(left) && valid_operand(right),
-        Op::Unary { dst, .. } | Op::SetCondition { dst, .. } | Op::Pop { dst } => valid_operand(dst),
+        Op::Binary {
+            dst, left, right, ..
+        } => valid_operand(dst) && valid_operand(left) && valid_operand(right),
+        Op::Unary { dst, .. } | Op::SetCondition { dst, .. } | Op::Pop { dst } => {
+            valid_operand(dst)
+        }
         Op::Compare { left, right, .. } => valid_operand(left) && valid_operand(right),
         Op::Push { src } => valid_operand(src),
         _ => true,
@@ -197,20 +270,32 @@ fn valid_op(op: &Op) -> bool {
 /// static indication that a caller must choose the image-pointer output model.
 pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
     let count = function.instructions.len();
-    if count == 0 || count > MAX_INSTRUCTIONS { return Err("provenance instruction limit exceeded or empty CFG".into()); }
+    if count == 0 || count > MAX_INSTRUCTIONS {
+        return Err("provenance instruction limit exceeded or empty CFG".into());
+    }
     let mut indices = BTreeMap::new();
     for (index, instruction) in function.instructions.iter().enumerate() {
-        if instruction.address < function.start || instruction.address >= function.end
-            || instruction.len == 0 || !valid_op(&instruction.op)
+        if instruction.address < function.start
+            || instruction.address >= function.end
+            || instruction.len == 0
+            || !valid_op(&instruction.op)
             || indices.insert(instruction.address, index).is_some()
-        { return Err("invalid instruction in provenance CFG".into()); }
+        {
+            return Err("invalid instruction in provenance CFG".into());
+        }
     }
-    let entry = *indices.get(&function.start).ok_or("provenance CFG has no entry instruction")?;
+    let entry = *indices
+        .get(&function.start)
+        .ok_or("provenance CFG has no entry instruction")?;
     let mut successors = vec![Vec::new(); count];
     for (index, instruction) in function.instructions.iter().enumerate() {
-        let next = instruction.address.checked_add(u64::from(instruction.len))
+        let next = instruction
+            .address
+            .checked_add(u64::from(instruction.len))
             .ok_or("provenance instruction address overflow")?;
-        if next > function.end { return Err("provenance instruction exceeds function extent".into()); }
+        if next > function.end {
+            return Err("provenance instruction exceeds function extent".into());
+        }
         let addresses = match instruction.op {
             Op::Return => Vec::new(),
             Op::Jump { target } => vec![target],
@@ -218,13 +303,19 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
             _ => vec![next],
         };
         for address in addresses {
-            successors[index].push(*indices.get(&address)
-                .ok_or_else(|| format!("provenance CFG successor 0x{address:x} has no instruction"))?);
+            successors[index].push(*indices.get(&address).ok_or_else(|| {
+                format!("provenance CFG successor 0x{address:x} has no instruction")
+            })?);
         }
     }
-    let mut initial = State { regs: [UNKNOWN; 16], stack: UNKNOWN };
+    let mut initial = State {
+        regs: [UNKNOWN; 16],
+        stack: UNKNOWN,
+    };
     initial.regs[4] = STACK;
-    for register in [7, 6, 2, 1, 8, 9] { initial.regs[register] = NUM; }
+    for register in [7, 6, 2, 1, 8, 9] {
+        initial.regs[register] = NUM;
+    }
     let mut states = vec![None; count];
     states[entry] = Some(initial);
     let mut work = VecDeque::from([entry]);
@@ -235,23 +326,38 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
     while let Some(index) = work.pop_front() {
         queued[index] = false;
         steps += 1;
-        if steps > budget { return Err("provenance CFG propagation work limit exceeded".into()); }
+        if steps > budget {
+            return Err("provenance CFG propagation work limit exceeded".into());
+        }
         let output = transfer(&function.instructions[index].op, states[index].unwrap());
         for &successor in &successors[index] {
             let joined = if let Some(previous) = states[successor] {
                 let mut joined = previous;
-                for (slot, value) in joined.regs.iter_mut().zip(output.regs) { *slot |= value; }
+                for (slot, value) in joined.regs.iter_mut().zip(output.regs) {
+                    *slot |= value;
+                }
                 joined.stack |= output.stack;
                 joined
-            } else { output };
+            } else {
+                output
+            };
             if states[successor] != Some(joined) {
                 states[successor] = Some(joined);
-                if !queued[successor] { work.push_back(successor); queued[successor] = true; }
+                if !queued[successor] {
+                    work.push_back(successor);
+                    queued[successor] = true;
+                }
             }
         }
     }
-    states.into_iter().map(|state| state.map(|s| s.regs)
-        .ok_or_else(|| "provenance CFG contains unreachable instructions".into())).collect()
+    states
+        .into_iter()
+        .map(|state| {
+            state
+                .map(|s| s.regs)
+                .ok_or_else(|| "provenance CFG contains unreachable instructions".into())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -259,22 +365,52 @@ mod tests {
     use super::*;
     use crate::lift::{Condition, Instruction};
 
-    fn reg(family: u8) -> RegView { RegView { family, width: 64, high8: false } }
-    fn r(family: u8) -> Operand { Operand::Reg(reg(family)) }
+    fn reg(family: u8) -> RegView {
+        RegView {
+            family,
+            width: 64,
+            high8: false,
+        }
+    }
+    fn r(family: u8) -> Operand {
+        Operand::Reg(reg(family))
+    }
     fn memory(base: Option<u8>, image: bool) -> Memory {
-        Memory { base, index: None, scale: 1, disp: 0, width: 64,
-            rip_relative_address: image.then_some(0x2000) }
+        Memory {
+            base,
+            index: None,
+            scale: 1,
+            disp: 0,
+            width: 64,
+            rip_relative_address: image.then_some(0x2000),
+        }
     }
     fn function(ops: Vec<Op>) -> LiftedFunction {
-        let instructions = ops.into_iter().enumerate().map(|(index, op)| Instruction {
-            address: 0x1000 + index as u64, len: 1, op,
-        }).collect::<Vec<_>>();
-        LiftedFunction { start: 0x1000, end: 0x1000 + instructions.len() as u64, instructions }
+        let instructions = ops
+            .into_iter()
+            .enumerate()
+            .map(|(index, op)| Instruction {
+                address: 0x1000 + index as u64,
+                len: 1,
+                op,
+            })
+            .collect::<Vec<_>>();
+        LiftedFunction {
+            start: 0x1000,
+            end: 0x1000 + instructions.len() as u64,
+            instructions,
+        }
     }
 
     #[test]
     fn direct_image_pointer_return_is_distinct_from_integer_return() {
-        let f = function(vec![Op::Lea { dst: reg(0), address: memory(None, true) }, Op::Return]);
+        let f = function(vec![
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Return,
+        ]);
         let states = analyze(&f).unwrap();
         assert_eq!(states[1][0], IMAGE);
         assert_eq!(states[0][4], STACK);
@@ -285,8 +421,17 @@ mod tests {
     #[test]
     fn table_address_is_admitted_but_loaded_bytes_are_numeric() {
         let m = memory(Some(0), false);
-        let f = function(vec![Op::Lea { dst: reg(0), address: memory(None, true) },
-            Op::Move { dst: r(0), src: Operand::Mem(m.clone()) }, Op::Return]);
+        let f = function(vec![
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Move {
+                dst: r(0),
+                src: Operand::Mem(m.clone()),
+            },
+            Op::Return,
+        ]);
         let states = analyze(&f).unwrap();
         assert!(memory_admissible(&m, &states[1]));
         assert_eq!(states[2][0], NUM);
@@ -294,7 +439,13 @@ mod tests {
 
     #[test]
     fn external_integer_argument_is_not_an_address() {
-        let f = function(vec![Op::Move { dst: r(0), src: r(7) }, Op::Return]);
+        let f = function(vec![
+            Op::Move {
+                dst: r(0),
+                src: r(7),
+            },
+            Op::Return,
+        ]);
         let states = analyze(&f).unwrap();
         assert!(!memory_admissible(&memory(Some(7), false), &states[0]));
         assert!(!memory_admissible(&memory(Some(0), false), &states[1]));
@@ -303,18 +454,43 @@ mod tests {
 
     #[test]
     fn cfg_merge_keeps_scalar_and_image_paths() {
-        let f = function(vec![Op::Branch { condition: Condition::Equal, target: 0x1003 },
-            Op::Lea { dst: reg(0), address: memory(None, true) }, Op::Jump { target: 0x1004 },
-            Op::Move { dst: r(0), src: Operand::Imm(3) }, Op::Return]);
+        let f = function(vec![
+            Op::Branch {
+                condition: Condition::Equal,
+                target: 0x1003,
+            },
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Jump { target: 0x1004 },
+            Op::Move {
+                dst: r(0),
+                src: Operand::Imm(3),
+            },
+            Op::Return,
+        ]);
         assert_eq!(analyze(&f).unwrap()[4][0], NUM | IMAGE);
     }
 
     #[test]
     fn pointer_spill_retains_a_possible_image_restore() {
         let slot = Operand::Mem(memory(Some(4), false));
-        let f = function(vec![Op::Lea { dst: reg(0), address: memory(None, true) },
-            Op::Move { dst: slot.clone(), src: r(0) },
-            Op::Move { dst: r(3), src: slot }, Op::Return]);
+        let f = function(vec![
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Move {
+                dst: slot.clone(),
+                src: r(0),
+            },
+            Op::Move {
+                dst: r(3),
+                src: slot,
+            },
+            Op::Return,
+        ]);
         let states = analyze(&f).unwrap();
         assert_ne!(states[3][3] & IMAGE, 0);
         assert!(memory_admissible(&memory(Some(3), false), &states[3]));
@@ -322,13 +498,39 @@ mod tests {
 
     #[test]
     fn partial_pointer_write_cannot_retain_pointer_provenance() {
-        let low = Operand::Reg(RegView { family: 0, width: 32, high8: false });
-        let f = function(vec![Op::Lea { dst: reg(0), address: memory(None, true) },
-            Op::Move { dst: low, src: Operand::Imm(0) }, Op::Return]);
+        let low = Operand::Reg(RegView {
+            family: 0,
+            width: 32,
+            high8: false,
+        });
+        let f = function(vec![
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Move {
+                dst: low,
+                src: Operand::Imm(0),
+            },
+            Op::Return,
+        ]);
         assert_eq!(analyze(&f).unwrap()[2][0], NUM);
-        let low = Operand::Reg(RegView { family: 0, width: 8, high8: false });
-        let f = function(vec![Op::Lea { dst: reg(0), address: memory(None, true) },
-            Op::Move { dst: low, src: Operand::Imm(0) }, Op::Return]);
+        let low = Operand::Reg(RegView {
+            family: 0,
+            width: 8,
+            high8: false,
+        });
+        let f = function(vec![
+            Op::Lea {
+                dst: reg(0),
+                address: memory(None, true),
+            },
+            Op::Move {
+                dst: low,
+                src: Operand::Imm(0),
+            },
+            Op::Return,
+        ]);
         assert_eq!(analyze(&f).unwrap()[2][0], NUM | INVALID);
     }
 }

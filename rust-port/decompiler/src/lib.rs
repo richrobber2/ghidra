@@ -2,8 +2,8 @@
 #![forbid(unsafe_code)]
 
 pub mod elf;
-pub mod lift;
 pub mod emit;
+pub mod lift;
 
 pub mod image;
 pub mod provenance;

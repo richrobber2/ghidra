@@ -98,19 +98,59 @@ pub enum Condition {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Op {
-    Move { dst: Operand, src: Operand },
-    MoveZeroExtend { dst: RegView, src: Operand },
-    MoveSignExtend { dst: RegView, src: Operand },
-    Lea { dst: RegView, address: Memory },
-    Binary { kind: BinaryKind, dst: Operand, left: Operand, right: Operand },
-    Unary { kind: UnaryKind, dst: Operand },
-    Compare { left: Operand, right: Operand, test: bool },
-    Jump { target: u64 },
-    Branch { condition: Condition, target: u64 },
-    ConditionalMove { condition: Condition, dst: RegView, src: Operand },
-    SetCondition { condition: Condition, dst: Operand },
-    Push { src: Operand },
-    Pop { dst: Operand },
+    Move {
+        dst: Operand,
+        src: Operand,
+    },
+    MoveZeroExtend {
+        dst: RegView,
+        src: Operand,
+    },
+    MoveSignExtend {
+        dst: RegView,
+        src: Operand,
+    },
+    Lea {
+        dst: RegView,
+        address: Memory,
+    },
+    Binary {
+        kind: BinaryKind,
+        dst: Operand,
+        left: Operand,
+        right: Operand,
+    },
+    Unary {
+        kind: UnaryKind,
+        dst: Operand,
+    },
+    Compare {
+        left: Operand,
+        right: Operand,
+        test: bool,
+    },
+    Jump {
+        target: u64,
+    },
+    Branch {
+        condition: Condition,
+        target: u64,
+    },
+    ConditionalMove {
+        condition: Condition,
+        dst: RegView,
+        src: Operand,
+    },
+    SetCondition {
+        condition: Condition,
+        dst: Operand,
+    },
+    Push {
+        src: Operand,
+    },
+    Pop {
+        dst: Operand,
+    },
     Leave,
     Return,
     Nop,
@@ -140,14 +180,21 @@ pub struct LiftError {
 
 impl fmt::Display for LiftError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unsupported function at 0x{:x}: {}", self.address, self.reason)
+        write!(
+            f,
+            "unsupported function at 0x{:x}: {}",
+            self.address, self.reason
+        )
     }
 }
 
 impl std::error::Error for LiftError {}
 
 fn error(address: u64, reason: impl Into<String>) -> LiftError {
-    LiftError { address, reason: reason.into() }
+    LiftError {
+        address,
+        reason: reason.into(),
+    }
 }
 
 /// Lift only instructions reachable from `start`, checking all direct branch
@@ -158,9 +205,13 @@ fn error(address: u64, reason: impl Into<String>) -> LiftError {
 /// silently discarded or rendered as an invented operation.
 pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftError> {
     if bytes.is_empty() || bytes.len() > MAX_FUNCTION_BYTES {
-        return Err(error(start, "empty function or function byte limit exceeded"));
+        return Err(error(
+            start,
+            "empty function or function byte limit exceeded",
+        ));
     }
-    let end = start.checked_add(bytes.len() as u64)
+    let end = start
+        .checked_add(bytes.len() as u64)
         .ok_or_else(|| error(start, "function address extent overflow"))?;
     let mut work = VecDeque::from([start]);
     let mut owners = vec![None; bytes.len()];
@@ -173,7 +224,10 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         let offset = (address - start) as usize;
         if let Some(owner) = owners[offset] {
             if owner != address {
-                return Err(error(address, "branch target enters the middle of an instruction"));
+                return Err(error(
+                    address,
+                    "branch target enters the middle of an instruction",
+                ));
             }
             continue;
         }
@@ -185,7 +239,8 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         if decoded.is_invalid() || decoded.len() == 0 {
             return Err(error(address, "invalid or truncated x86-64 instruction"));
         }
-        let next = address.checked_add(decoded.len() as u64)
+        let next = address
+            .checked_add(decoded.len() as u64)
             .ok_or_else(|| error(address, "instruction address overflow"))?;
         if next > end {
             return Err(error(address, "instruction exceeds bounded function"));
@@ -202,7 +257,10 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         if decoded.mnemonic() != Mnemonic::Nop
             && has_address_size_prefix(&bytes[offset..offset + decoded.len()])
         {
-            return Err(error(address, "32-bit address-size wrapping is not modeled"));
+            return Err(error(
+                address,
+                "32-bit address-size wrapping is not modeled",
+            ));
         }
         let op = lift_instruction(&decoded)?;
         match &op {
@@ -214,25 +272,40 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
             }
             _ => work.push_back(next),
         }
-        instructions.insert(address, Instruction { address, len: decoded.len() as u8, op });
+        instructions.insert(
+            address,
+            Instruction {
+                address,
+                len: decoded.len() as u8,
+                op,
+            },
+        );
     }
     if !saw_return {
         return Err(error(start, "reachable CFG has no modeled return"));
     }
-    Ok(LiftedFunction { start, end, instructions: instructions.into_values().collect() })
+    Ok(LiftedFunction {
+        start,
+        end,
+        instructions: instructions.into_values().collect(),
+    })
 }
 
 fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
     let ip = ins.ip();
     // REP/REPNE and LOCK introduce semantics absent from this scalar IR. Reject
     // even redundant prefixes rather than relying on mnemonic normalization.
-    if ins.has_lock_prefix() || ins.has_repne_prefix()
+    if ins.has_lock_prefix()
+        || ins.has_repne_prefix()
         || (ins.has_rep_prefix() && ins.mnemonic() != Mnemonic::Endbr64)
     {
         return Err(error(ip, "LOCK/REP prefixes are outside the scalar model"));
     }
     if ins.segment_prefix() != Register::None && ins.mnemonic() != Mnemonic::Nop {
-        return Err(error(ip, "segment overrides are outside the flat SysV model"));
+        return Err(error(
+            ip,
+            "segment overrides are outside the flat SysV model",
+        ));
     }
     use Mnemonic::*;
     let mnemonic = ins.mnemonic();
@@ -248,12 +321,17 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
             require_count(ins, 2)?;
             let dst = register_operand(ins, 0)?;
             let src = operand(ins, 1)?;
-            let width = src.width().ok_or_else(|| error(ip, "extension source is not a register/memory value"))?;
+            let width = src
+                .width()
+                .ok_or_else(|| error(ip, "extension source is not a register/memory value"))?;
             if width >= dst.width || (mnemonic == Movsxd && (width != 32 || dst.width != 64)) {
                 return Err(error(ip, "unsupported non-widening extension form"));
             }
-            if mnemonic == Movzx { Ok(Op::MoveZeroExtend { dst, src }) }
-            else { Ok(Op::MoveSignExtend { dst, src }) }
+            if mnemonic == Movzx {
+                Ok(Op::MoveZeroExtend { dst, src })
+            } else {
+                Ok(Op::MoveSignExtend { dst, src })
+            }
         }
         Lea => {
             require_count(ins, 2)?;
@@ -261,7 +339,10 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
             if !matches!(dst.width, 16 | 32 | 64) || ins.op_kind(1) != OpKind::Memory {
                 return Err(error(ip, "unsupported LEA form"));
             }
-            Ok(Op::Lea { dst, address: memory(ins, dst.width)? })
+            Ok(Op::Lea {
+                dst,
+                address: memory(ins, dst.width)?,
+            })
         }
         Add | Adc | Sub | Sbb | And | Or | Xor | Shl | Sal | Shr | Sar | Rol | Ror => {
             require_count(ins, 2)?;
@@ -271,68 +352,118 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
                 require_same_width(ip, &dst, &right)?;
             }
             let kind = match mnemonic {
-                Add => BinaryKind::Add, Adc => BinaryKind::Adc, Sub => BinaryKind::Sub,
-                Sbb => BinaryKind::Sbb, And => BinaryKind::And,
-                Or => BinaryKind::Or, Xor => BinaryKind::Xor, Shl | Sal => BinaryKind::Shl,
-                Shr => BinaryKind::Shr, Sar => BinaryKind::Sar,
-                Rol => BinaryKind::Rol, Ror => BinaryKind::Ror, _ => unreachable!(),
+                Add => BinaryKind::Add,
+                Adc => BinaryKind::Adc,
+                Sub => BinaryKind::Sub,
+                Sbb => BinaryKind::Sbb,
+                And => BinaryKind::And,
+                Or => BinaryKind::Or,
+                Xor => BinaryKind::Xor,
+                Shl | Sal => BinaryKind::Shl,
+                Shr => BinaryKind::Shr,
+                Sar => BinaryKind::Sar,
+                Rol => BinaryKind::Rol,
+                Ror => BinaryKind::Ror,
+                _ => unreachable!(),
             };
-            Ok(Op::Binary { kind, left: dst.clone(), dst, right })
+            Ok(Op::Binary {
+                kind,
+                left: dst.clone(),
+                dst,
+                right,
+            })
         }
         Imul => {
             if !matches!(ins.op_count(), 2 | 3) {
                 return Err(error(ip, "implicit double-width IMUL is not modeled"));
             }
             let dst = Operand::Reg(register_operand(ins, 0)?);
-            let left = if ins.op_count() == 3 { operand(ins, 1)? } else { dst.clone() };
+            let left = if ins.op_count() == 3 {
+                operand(ins, 1)?
+            } else {
+                dst.clone()
+            };
             let right = operand(ins, ins.op_count() - 1)?;
             require_same_width(ip, &dst, &left)?;
             require_same_width(ip, &dst, &right)?;
-            Ok(Op::Binary { kind: BinaryKind::Imul, dst, left, right })
+            Ok(Op::Binary {
+                kind: BinaryKind::Imul,
+                dst,
+                left,
+                right,
+            })
         }
         Inc | Dec | Neg | Not => {
             require_count(ins, 1)?;
             let kind = match mnemonic {
-                Inc => UnaryKind::Inc, Dec => UnaryKind::Dec,
-                Neg => UnaryKind::Neg, Not => UnaryKind::Not, _ => unreachable!(),
+                Inc => UnaryKind::Inc,
+                Dec => UnaryKind::Dec,
+                Neg => UnaryKind::Neg,
+                Not => UnaryKind::Not,
+                _ => unreachable!(),
             };
-            Ok(Op::Unary { kind, dst: writable_operand(ins, 0)? })
+            Ok(Op::Unary {
+                kind,
+                dst: writable_operand(ins, 0)?,
+            })
         }
         Cmp | Test => {
             require_count(ins, 2)?;
             let left = operand(ins, 0)?;
             let right = operand(ins, 1)?;
             require_same_width(ip, &left, &right)?;
-            Ok(Op::Compare { left, right, test: mnemonic == Test })
+            Ok(Op::Compare {
+                left,
+                right,
+                test: mnemonic == Test,
+            })
         }
         Jmp => {
             require_count(ins, 1)?;
-            Ok(Op::Jump { target: branch_target(ins)? })
+            Ok(Op::Jump {
+                target: branch_target(ins)?,
+            })
         }
         Jo | Jno | Jb | Jae | Je | Jne | Jbe | Ja | Js | Jns | Jp | Jnp | Jl | Jge | Jle | Jg => {
             require_count(ins, 1)?;
-            Ok(Op::Branch { condition: condition(mnemonic).unwrap(), target: branch_target(ins)? })
+            Ok(Op::Branch {
+                condition: condition(mnemonic).unwrap(),
+                target: branch_target(ins)?,
+            })
         }
-        Cmovo | Cmovno | Cmovb | Cmovae | Cmove | Cmovne | Cmovbe | Cmova |
-        Cmovs | Cmovns | Cmovp | Cmovnp | Cmovl | Cmovge | Cmovle | Cmovg => {
+        Cmovo | Cmovno | Cmovb | Cmovae | Cmove | Cmovne | Cmovbe | Cmova | Cmovs | Cmovns
+        | Cmovp | Cmovnp | Cmovl | Cmovge | Cmovle | Cmovg => {
             require_count(ins, 2)?;
             let dst = register_operand(ins, 0)?;
             let src = operand(ins, 1)?;
             require_same_width(ip, &Operand::Reg(dst), &src)?;
-            Ok(Op::ConditionalMove { condition: condition(mnemonic).unwrap(), dst, src })
+            Ok(Op::ConditionalMove {
+                condition: condition(mnemonic).unwrap(),
+                dst,
+                src,
+            })
         }
-        Seto | Setno | Setb | Setae | Sete | Setne | Setbe | Seta |
-        Sets | Setns | Setp | Setnp | Setl | Setge | Setle | Setg => {
+        Seto | Setno | Setb | Setae | Sete | Setne | Setbe | Seta | Sets | Setns | Setp | Setnp
+        | Setl | Setge | Setle | Setg => {
             require_count(ins, 1)?;
             let dst = writable_operand(ins, 0)?;
-            if dst.width() != Some(8) { return Err(error(ip, "SETcc destination is not eight bits")); }
-            Ok(Op::SetCondition { condition: condition(mnemonic).unwrap(), dst })
+            if dst.width() != Some(8) {
+                return Err(error(ip, "SETcc destination is not eight bits"));
+            }
+            Ok(Op::SetCondition {
+                condition: condition(mnemonic).unwrap(),
+                dst,
+            })
         }
         Push => {
             require_count(ins, 1)?;
-            if !matches!(ins.code(), iced_x86::Code::Push_r64 | iced_x86::Code::Push_rm64
-                | iced_x86::Code::Pushq_imm8 | iced_x86::Code::Pushq_imm32)
-            {
+            if !matches!(
+                ins.code(),
+                iced_x86::Code::Push_r64
+                    | iced_x86::Code::Push_rm64
+                    | iced_x86::Code::Pushq_imm8
+                    | iced_x86::Code::Pushq_imm32
+            ) {
                 return Err(error(ip, "only 64-bit stack pushes are modeled"));
             }
             let src = operand(ins, 0)?;
@@ -373,11 +504,22 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
         Cbw | Cwde | Cdqe => {
             require_count(ins, 0)?;
             let (width, source_width) = match mnemonic {
-                Cbw => (16, 8), Cwde => (32, 16), Cdqe => (64, 32), _ => unreachable!(),
+                Cbw => (16, 8),
+                Cwde => (32, 16),
+                Cdqe => (64, 32),
+                _ => unreachable!(),
             };
             Ok(Op::MoveSignExtend {
-                dst: RegView { family: 0, width, high8: false },
-                src: Operand::Reg(RegView { family: 0, width: source_width, high8: false }),
+                dst: RegView {
+                    family: 0,
+                    width,
+                    high8: false,
+                },
+                src: Operand::Reg(RegView {
+                    family: 0,
+                    width: source_width,
+                    high8: false,
+                }),
             })
         }
         _ => Err(error(ip, format!("unmodeled instruction {mnemonic:?}"))),
@@ -388,8 +530,7 @@ fn has_address_size_prefix(bytes: &[u8]) -> bool {
     for byte in bytes {
         match byte {
             0x67 => return true,
-            0x26 | 0x2e | 0x36 | 0x3e | 0x64 | 0x65 | 0x66 | 0xf0 | 0xf2 | 0xf3
-                | 0x40..=0x4f => {},
+            0x26 | 0x2e | 0x36 | 0x3e | 0x64 | 0x65 | 0x66 | 0xf0 | 0xf2 | 0xf3 | 0x40..=0x4f => {}
             _ => break,
         }
     }
@@ -397,8 +538,11 @@ fn has_address_size_prefix(bytes: &[u8]) -> bool {
 }
 
 fn require_count(ins: &Decoded, count: u32) -> Result<(), LiftError> {
-    if ins.op_count() == count { Ok(()) }
-    else { Err(error(ins.ip(), "unsupported operand count")) }
+    if ins.op_count() == count {
+        Ok(())
+    } else {
+        Err(error(ins.ip(), "unsupported operand count"))
+    }
 }
 
 fn require_same_width(ip: u64, left: &Operand, right: &Operand) -> Result<(), LiftError> {
@@ -410,7 +554,10 @@ fn require_same_width(ip: u64, left: &Operand, right: &Operand) -> Result<(), Li
 
 fn branch_target(ins: &Decoded) -> Result<u64, LiftError> {
     if ins.op_kind(0) != OpKind::NearBranch64 {
-        return Err(error(ins.ip(), "indirect or non-64-bit branch is not modeled"));
+        return Err(error(
+            ins.ip(),
+            "indirect or non-64-bit branch is not modeled",
+        ));
     }
     Ok(ins.near_branch64())
 }
@@ -419,7 +566,8 @@ fn register_operand(ins: &Decoded, index: u32) -> Result<RegView, LiftError> {
     if ins.op_kind(index) != OpKind::Register {
         return Err(error(ins.ip(), "expected general-purpose register operand"));
     }
-    register(ins.op_register(index)).ok_or_else(|| error(ins.ip(), "non-integer register is not modeled"))
+    register(ins.op_register(index))
+        .ok_or_else(|| error(ins.ip(), "non-integer register is not modeled"))
 }
 
 fn writable_operand(ins: &Decoded, index: u32) -> Result<Operand, LiftError> {
@@ -459,17 +607,26 @@ fn memory(ins: &Decoded, width: u8) -> Result<Memory, LiftError> {
     let index_reg = ins.memory_index();
     let rip_relative_address = if base_reg == Register::RIP {
         Some(ins.ip_rel_memory_address())
-    } else { None };
+    } else {
+        None
+    };
     let base = if matches!(base_reg, Register::None | Register::RIP) {
         None
     } else {
         let reg = register(base_reg).ok_or_else(|| error(ip, "unmodeled memory base register"))?;
-        if reg.width != 64 { return Err(error(ip, "32-bit address-size wrapping is not modeled")); }
+        if reg.width != 64 {
+            return Err(error(ip, "32-bit address-size wrapping is not modeled"));
+        }
         Some(reg.family)
     };
-    let index = if index_reg == Register::None { None } else {
-        let reg = register(index_reg).ok_or_else(|| error(ip, "unmodeled memory index register"))?;
-        if reg.width != 64 { return Err(error(ip, "32-bit address-size wrapping is not modeled")); }
+    let index = if index_reg == Register::None {
+        None
+    } else {
+        let reg =
+            register(index_reg).ok_or_else(|| error(ip, "unmodeled memory index register"))?;
+        if reg.width != 64 {
+            return Err(error(ip, "32-bit address-size wrapping is not modeled"));
+        }
         Some(reg.family)
     };
     // The raw-prefix check also rejects absolute disp32 addressing under a
@@ -479,34 +636,93 @@ fn memory(ins: &Decoded, width: u8) -> Result<Memory, LiftError> {
         return Err(error(ip, "32-bit address-size wrapping is not modeled"));
     }
     Ok(Memory {
-        base, index, scale: ins.memory_index_scale() as u8,
-        disp: ins.memory_displacement64() as i64, width, rip_relative_address,
+        base,
+        index,
+        scale: ins.memory_index_scale() as u8,
+        disp: ins.memory_displacement64() as i64,
+        width,
+        rip_relative_address,
     })
 }
 
 fn register(reg: Register) -> Option<RegView> {
     use Register::*;
     let (family, width, high8) = match reg {
-        AL => (0,8,false), CL => (1,8,false), DL => (2,8,false), BL => (3,8,false),
-        AH => (0,8,true), CH => (1,8,true), DH => (2,8,true), BH => (3,8,true),
-        SPL => (4,8,false), BPL => (5,8,false), SIL => (6,8,false), DIL => (7,8,false),
-        R8L => (8,8,false), R9L => (9,8,false), R10L => (10,8,false), R11L => (11,8,false),
-        R12L => (12,8,false), R13L => (13,8,false), R14L => (14,8,false), R15L => (15,8,false),
-        AX => (0,16,false), CX => (1,16,false), DX => (2,16,false), BX => (3,16,false),
-        SP => (4,16,false), BP => (5,16,false), SI => (6,16,false), DI => (7,16,false),
-        R8W => (8,16,false), R9W => (9,16,false), R10W => (10,16,false), R11W => (11,16,false),
-        R12W => (12,16,false), R13W => (13,16,false), R14W => (14,16,false), R15W => (15,16,false),
-        EAX => (0,32,false), ECX => (1,32,false), EDX => (2,32,false), EBX => (3,32,false),
-        ESP => (4,32,false), EBP => (5,32,false), ESI => (6,32,false), EDI => (7,32,false),
-        R8D => (8,32,false), R9D => (9,32,false), R10D => (10,32,false), R11D => (11,32,false),
-        R12D => (12,32,false), R13D => (13,32,false), R14D => (14,32,false), R15D => (15,32,false),
-        RAX => (0,64,false), RCX => (1,64,false), RDX => (2,64,false), RBX => (3,64,false),
-        RSP => (4,64,false), RBP => (5,64,false), RSI => (6,64,false), RDI => (7,64,false),
-        R8 => (8,64,false), R9 => (9,64,false), R10 => (10,64,false), R11 => (11,64,false),
-        R12 => (12,64,false), R13 => (13,64,false), R14 => (14,64,false), R15 => (15,64,false),
+        AL => (0, 8, false),
+        CL => (1, 8, false),
+        DL => (2, 8, false),
+        BL => (3, 8, false),
+        AH => (0, 8, true),
+        CH => (1, 8, true),
+        DH => (2, 8, true),
+        BH => (3, 8, true),
+        SPL => (4, 8, false),
+        BPL => (5, 8, false),
+        SIL => (6, 8, false),
+        DIL => (7, 8, false),
+        R8L => (8, 8, false),
+        R9L => (9, 8, false),
+        R10L => (10, 8, false),
+        R11L => (11, 8, false),
+        R12L => (12, 8, false),
+        R13L => (13, 8, false),
+        R14L => (14, 8, false),
+        R15L => (15, 8, false),
+        AX => (0, 16, false),
+        CX => (1, 16, false),
+        DX => (2, 16, false),
+        BX => (3, 16, false),
+        SP => (4, 16, false),
+        BP => (5, 16, false),
+        SI => (6, 16, false),
+        DI => (7, 16, false),
+        R8W => (8, 16, false),
+        R9W => (9, 16, false),
+        R10W => (10, 16, false),
+        R11W => (11, 16, false),
+        R12W => (12, 16, false),
+        R13W => (13, 16, false),
+        R14W => (14, 16, false),
+        R15W => (15, 16, false),
+        EAX => (0, 32, false),
+        ECX => (1, 32, false),
+        EDX => (2, 32, false),
+        EBX => (3, 32, false),
+        ESP => (4, 32, false),
+        EBP => (5, 32, false),
+        ESI => (6, 32, false),
+        EDI => (7, 32, false),
+        R8D => (8, 32, false),
+        R9D => (9, 32, false),
+        R10D => (10, 32, false),
+        R11D => (11, 32, false),
+        R12D => (12, 32, false),
+        R13D => (13, 32, false),
+        R14D => (14, 32, false),
+        R15D => (15, 32, false),
+        RAX => (0, 64, false),
+        RCX => (1, 64, false),
+        RDX => (2, 64, false),
+        RBX => (3, 64, false),
+        RSP => (4, 64, false),
+        RBP => (5, 64, false),
+        RSI => (6, 64, false),
+        RDI => (7, 64, false),
+        R8 => (8, 64, false),
+        R9 => (9, 64, false),
+        R10 => (10, 64, false),
+        R11 => (11, 64, false),
+        R12 => (12, 64, false),
+        R13 => (13, 64, false),
+        R14 => (14, 64, false),
+        R15 => (15, 64, false),
         _ => return Option::None,
     };
-    Some(RegView { family, width, high8 })
+    Some(RegView {
+        family,
+        width,
+        high8,
+    })
 }
 
 fn condition(mnemonic: Mnemonic) -> Option<Condition> {
@@ -538,76 +754,130 @@ mod tests {
 
     #[test]
     fn lifts_integer_leaf_and_ignores_unreachable_tail_data() {
-        let lifted = lift_function(&[0x48,0x8d,0x04,0x37,0xc3,0x0f],0x1000).unwrap();
-        assert_eq!(lifted.instructions.len(),2);
-        assert!(matches!(lifted.instructions[0].op,Op::Lea { dst: RegView { family:0,width:64,.. }, .. }));
-        assert_eq!(lifted.instructions[1].op,Op::Return);
+        let lifted = lift_function(&[0x48, 0x8d, 0x04, 0x37, 0xc3, 0x0f], 0x1000).unwrap();
+        assert_eq!(lifted.instructions.len(), 2);
+        assert!(matches!(
+            lifted.instructions[0].op,
+            Op::Lea {
+                dst: RegView {
+                    family: 0,
+                    width: 64,
+                    ..
+                },
+                ..
+            }
+        ));
+        assert_eq!(lifted.instructions[1].op, Op::Return);
     }
 
     #[test]
     fn partial_registers_and_sign_extended_immediates_are_explicit() {
-        let lifted=lift_function(&[0xb4,0x7f,0x48,0x83,0xc0,0xff,0xc3],0x1000).unwrap();
-        assert!(matches!(lifted.instructions[0].op,Op::Move {
-            dst:Operand::Reg(RegView { family:0,width:8,high8:true }),src:Operand::Imm(0x7f) }));
-        assert!(matches!(lifted.instructions[1].op,Op::Binary { right:Operand::Imm(u64::MAX),.. }));
+        let lifted = lift_function(&[0xb4, 0x7f, 0x48, 0x83, 0xc0, 0xff, 0xc3], 0x1000).unwrap();
+        assert!(matches!(
+            lifted.instructions[0].op,
+            Op::Move {
+                dst: Operand::Reg(RegView {
+                    family: 0,
+                    width: 8,
+                    high8: true
+                }),
+                src: Operand::Imm(0x7f)
+            }
+        ));
+        assert!(matches!(
+            lifted.instructions[1].op,
+            Op::Binary {
+                right: Operand::Imm(u64::MAX),
+                ..
+            }
+        ));
     }
 
     #[test]
     fn rejects_overlapping_and_outside_control_flow() {
         // JZ enters the immediate byte of a reachable MOV EAX,imm32.
-        assert!(lift_function(&[0x74,0x01,0xb8,0,0,0,0,0xc3],0x1000).is_err());
-        assert!(lift_function(&[0x74,0x01,0x48,0x89,0xf8,0xc3],0x1000).is_err());
-        assert!(lift_function(&[0xeb,0x7f,0xc3],0x1000).is_err());
-        assert!(lift_function(&[0x90],0x1000).is_err());
+        assert!(lift_function(&[0x74, 0x01, 0xb8, 0, 0, 0, 0, 0xc3], 0x1000).is_err());
+        assert!(lift_function(&[0x74, 0x01, 0x48, 0x89, 0xf8, 0xc3], 0x1000).is_err());
+        assert!(lift_function(&[0xeb, 0x7f, 0xc3], 0x1000).is_err());
+        assert!(lift_function(&[0x90], 0x1000).is_err());
     }
 
     #[test]
     fn accepts_unreachable_prefix_before_a_valid_branch_target() {
         // Only MOV EAX,EDI is reachable. The skipped REX byte must not invent
         // a second, unreachable instruction stream that blocks this target.
-        let lifted=lift_function(&[0xeb,0x01,0x48,0x89,0xf8,0xc3],0x1000).unwrap();
-        assert!(matches!(lifted.instructions[1].op,Op::Move {
-            dst:Operand::Reg(RegView { family:0,width:32,.. }),.. }));
+        let lifted = lift_function(&[0xeb, 0x01, 0x48, 0x89, 0xf8, 0xc3], 0x1000).unwrap();
+        assert!(matches!(
+            lifted.instructions[1].op,
+            Op::Move {
+                dst: Operand::Reg(RegView {
+                    family: 0,
+                    width: 32,
+                    ..
+                }),
+                ..
+            }
+        ));
     }
 
     #[test]
     fn rejects_calls_simd_indirect_jumps_and_prefix_semantics() {
         for bytes in [
-            &[0xe8,0,0,0,0,0xc3][..], &[0x0f,0x57,0xc0,0xc3][..],
-            &[0xff,0xe0][..], &[0xf0,0x01,0x07,0xc3][..],
-            &[0x64,0x48,0x8b,0x00,0xc3][..], &[0x67,0x8b,0x00,0xc3][..],
-            &[0x67,0x8b,0x04,0x25,0x78,0x56,0x34,0x12,0xc3][..],
-            &[0x66,0x6a,0x01,0xc3][..], &[0xc2,0x08,0x00][..],
-        ] { assert!(lift_function(bytes,0x1000).is_err(),"{bytes:02x?}"); }
+            &[0xe8, 0, 0, 0, 0, 0xc3][..],
+            &[0x0f, 0x57, 0xc0, 0xc3][..],
+            &[0xff, 0xe0][..],
+            &[0xf0, 0x01, 0x07, 0xc3][..],
+            &[0x64, 0x48, 0x8b, 0x00, 0xc3][..],
+            &[0x67, 0x8b, 0x00, 0xc3][..],
+            &[0x67, 0x8b, 0x04, 0x25, 0x78, 0x56, 0x34, 0x12, 0xc3][..],
+            &[0x66, 0x6a, 0x01, 0xc3][..],
+            &[0xc2, 0x08, 0x00][..],
+        ] {
+            assert!(lift_function(bytes, 0x1000).is_err(), "{bytes:02x?}");
+        }
     }
 
     #[test]
     fn lifts_back_edges_without_redecoding_forever() {
-        let lifted=lift_function(&[0x31,0xc0,0x83,0xc0,0x01,0x83,0xf8,0x03,0x7c,0xf8,0xc3],0x1000).unwrap();
-        assert_eq!(lifted.instructions.len(),5);
-        assert!(matches!(lifted.instructions[3].op,Op::Branch { condition:Condition::Less,target:0x1002 }));
+        let lifted = lift_function(
+            &[
+                0x31, 0xc0, 0x83, 0xc0, 0x01, 0x83, 0xf8, 0x03, 0x7c, 0xf8, 0xc3,
+            ],
+            0x1000,
+        )
+        .unwrap();
+        assert_eq!(lifted.instructions.len(), 5);
+        assert!(matches!(
+            lifted.instructions[3].op,
+            Op::Branch {
+                condition: Condition::Less,
+                target: 0x1002
+            }
+        ));
     }
 
     #[test]
     fn alignment_nops_ignore_segment_and_address_size_prefixes() {
         for bytes in [
             // Common GCC 10-byte alignment NOP with operand-size and CS prefixes.
-            &[0x66,0x2e,0x0f,0x1f,0x84,0x00,0x00,0x00,0x00,0x00,0xc3][..],
-            &[0x67,0x0f,0x1f,0x00,0xc3][..],
-            &[0x67,0x90,0xc3][..],
+            &[
+                0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc3,
+            ][..],
+            &[0x67, 0x0f, 0x1f, 0x00, 0xc3][..],
+            &[0x67, 0x90, 0xc3][..],
         ] {
-            let lifted=lift_function(bytes,0x1000).unwrap();
-            assert_eq!(lifted.instructions.len(),2);
-            assert_eq!(lifted.instructions[0].op,Op::Nop);
-            assert_eq!(lifted.instructions[1].op,Op::Return);
+            let lifted = lift_function(bytes, 0x1000).unwrap();
+            assert_eq!(lifted.instructions.len(), 2);
+            assert_eq!(lifted.instructions[0].op, Op::Nop);
+            assert_eq!(lifted.instructions[1].op, Op::Return);
         }
         // Prefix exceptions apply only to NOP, and never permit LOCK.
         for bytes in [
-            &[0x2e,0x48,0x8b,0x00,0xc3][..],
-            &[0x67,0x8b,0x00,0xc3][..],
-            &[0xf0,0x0f,0x1f,0x00,0xc3][..],
+            &[0x2e, 0x48, 0x8b, 0x00, 0xc3][..],
+            &[0x67, 0x8b, 0x00, 0xc3][..],
+            &[0xf0, 0x0f, 0x1f, 0x00, 0xc3][..],
         ] {
-            assert!(lift_function(bytes,0x1000).is_err());
+            assert!(lift_function(bytes, 0x1000).is_err());
         }
     }
 }
