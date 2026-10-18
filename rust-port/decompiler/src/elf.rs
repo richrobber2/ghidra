@@ -68,7 +68,9 @@ pub struct ElfImage<'a> {
 impl<'a> ElfImage<'a> {
     pub fn parse(bytes: &'a [u8]) -> Result<Self, String> {
         if bytes.len() > MAX_IMAGE_BYTES {
-            return Err(format!("image exceeds {MAX_IMAGE_BYTES}-byte resource limit"));
+            return Err(format!(
+                "image exceeds {MAX_IMAGE_BYTES}-byte resource limit"
+            ));
         }
         let program_headers = parse_program_headers(bytes, ParsePolicy::Strict)
             .map_err(|error| format!("ELF header/program table: {error}"))?;
@@ -77,13 +79,22 @@ impl<'a> ElfImage<'a> {
             return Err("only ELF64 little-endian images are supported".into());
         }
         if header.machine != 62 {
-            return Err(format!("only x86-64 ELF machine 62 is supported (got {})", header.machine));
+            return Err(format!(
+                "only x86-64 ELF machine 62 is supported (got {})",
+                header.machine
+            ));
         }
         if !matches!(header.elf_type, 2 | 3) {
-            return Err(format!("only ET_EXEC/ET_DYN images are supported (got type {})", header.elf_type));
+            return Err(format!(
+                "only ET_EXEC/ET_DYN images are supported (got type {})",
+                header.elf_type
+            ));
         }
         if header.shnum > MAX_SECTIONS {
-            return Err(format!("section count {} exceeds resource limit {MAX_SECTIONS}", header.shnum));
+            return Err(format!(
+                "section count {} exceeds resource limit {MAX_SECTIONS}",
+                header.shnum
+            ));
         }
 
         let mut loads = Vec::new();
@@ -95,31 +106,41 @@ impl<'a> ElfImage<'a> {
                 return Err(format!("PT_LOAD {index} file size exceeds memory size"));
             }
             checked_slice(bytes, load.raw_offset, load.file_size, "PT_LOAD payload")?;
-            load.virtual_address.checked_add(load.memory_size)
+            load.virtual_address
+                .checked_add(load.memory_size)
                 .ok_or_else(|| format!("PT_LOAD {index} virtual extent overflows"))?;
             if load.align > 1 {
                 if !load.align.is_power_of_two() {
                     return Err(format!("PT_LOAD {index} alignment is not a power of two"));
                 }
                 if load.virtual_address % load.align != load.raw_offset % load.align {
-                    return Err(format!("PT_LOAD {index} address and file offset violate alignment"));
+                    return Err(format!(
+                        "PT_LOAD {index} address and file offset violate alignment"
+                    ));
                 }
             }
             loads.push(load);
         }
-        if !loads.iter().any(|load| load.flags & PF_X != 0 && load.file_size != 0) {
+        if !loads
+            .iter()
+            .any(|load| load.flags & PF_X != 0 && load.file_size != 0)
+        {
             return Err("no file-backed executable PT_LOAD segment".into());
         }
 
         let mut image = Self {
-            bytes, entry: header.entry, loads,
+            bytes,
+            entry: header.entry,
+            loads,
             program_headers: program_headers.iter().collect(),
-            sections: Vec::new(), functions: Vec::new(),
+            sections: Vec::new(),
+            functions: Vec::new(),
         };
         if header.shnum == 0 {
             return Ok(image);
         }
-        let table_size = u64::from(header.shnum).checked_mul(64)
+        let table_size = u64::from(header.shnum)
+            .checked_mul(64)
             .ok_or("section table size overflows")?;
         let table = checked_slice(bytes, header.shoff, table_size, "section table")?;
         let mut sections = Vec::with_capacity(header.shnum as usize);
@@ -140,7 +161,9 @@ impl<'a> ElfImage<'a> {
                 checked_slice(bytes, section.offset, section.size, "section payload")
                     .map_err(|error| format!("section {index}: {error}"))?;
             }
-            section.address.checked_add(section.size)
+            section
+                .address
+                .checked_add(section.size)
                 .ok_or_else(|| format!("section {index} virtual extent overflows"))?;
             sections.push(section);
         }
@@ -151,16 +174,27 @@ impl<'a> ElfImage<'a> {
             if section.section_type != SHT_SYMTAB_SHNDX {
                 continue;
             }
-            let linked = sections.get(section.link as usize)
-                .ok_or_else(|| format!("extended symbol-index section {index} has invalid sh_link"))?;
+            let linked = sections.get(section.link as usize).ok_or_else(|| {
+                format!("extended symbol-index section {index} has invalid sh_link")
+            })?;
             if !matches!(linked.section_type, SHT_SYMTAB | SHT_DYNSYM) {
-                return Err(format!("extended symbol-index section {index} does not link a symbol table"));
+                return Err(format!(
+                    "extended symbol-index section {index} does not link a symbol table"
+                ));
             }
             if section.entry_size != 4 || section.size % 4 != 0 {
-                return Err(format!("extended symbol-index section {index} requires four-byte entries"));
+                return Err(format!(
+                    "extended symbol-index section {index} requires four-byte entries"
+                ));
             }
-            if extended_indices[section.link as usize].replace(index).is_some() {
-                return Err(format!("symbol table {} has multiple extended-index tables", section.link));
+            if extended_indices[section.link as usize]
+                .replace(index)
+                .is_some()
+            {
+                return Err(format!(
+                    "symbol table {} has multiple extended-index tables",
+                    section.link
+                ));
             }
         }
 
@@ -171,46 +205,74 @@ impl<'a> ElfImage<'a> {
                 continue;
             }
             if section.entry_size != 24 || section.size % 24 != 0 {
-                return Err(format!("symbol table {table_index} requires complete 24-byte entries"));
+                return Err(format!(
+                    "symbol table {table_index} requires complete 24-byte entries"
+                ));
             }
             let count = section.size / 24;
-            total_symbols = total_symbols.checked_add(count).ok_or("symbol count overflows")?;
+            total_symbols = total_symbols
+                .checked_add(count)
+                .ok_or("symbol count overflows")?;
             if total_symbols > MAX_SYMBOLS {
-                return Err(format!("total symbol count exceeds resource limit {MAX_SYMBOLS}"));
+                return Err(format!(
+                    "total symbol count exceeds resource limit {MAX_SYMBOLS}"
+                ));
             }
             // Every retained function may inspect every load interval. Charge
             // all declared symbols conservatively before reading this table;
             // a many-table/many-segment input must not amplify bounded counts
             // into billions of interval checks. This is a wrapper work cap.
-            let mapping_work = total_symbols.checked_mul(image.loads.len() as u64)
+            let mapping_work = total_symbols
+                .checked_mul(image.loads.len() as u64)
                 .ok_or("symbol mapping work estimate overflows")?;
             if mapping_work > MAX_SYMBOL_MAPPING_WORK {
-                return Err(format!("declared symbol/load mapping work {mapping_work} exceeds resource limit {MAX_SYMBOL_MAPPING_WORK}"));
+                return Err(format!(
+                    "declared symbol/load mapping work {mapping_work} exceeds resource limit {MAX_SYMBOL_MAPPING_WORK}"
+                ));
             }
-            let string_section = sections.get(section.link as usize)
-                .ok_or_else(|| format!("symbol table {table_index} has invalid string-table link"))?;
+            let string_section = sections.get(section.link as usize).ok_or_else(|| {
+                format!("symbol table {table_index} has invalid string-table link")
+            })?;
             if string_section.section_type != SHT_STRTAB {
-                return Err(format!("symbol table {table_index} does not link SHT_STRTAB"));
+                return Err(format!(
+                    "symbol table {table_index} does not link SHT_STRTAB"
+                ));
             }
-            let strings = checked_slice(bytes, string_section.offset, string_section.size, "symbol string table")?;
+            let strings = checked_slice(
+                bytes,
+                string_section.offset,
+                string_section.size,
+                "symbol string table",
+            )?;
             if strings.first() != Some(&0) || strings.last() != Some(&0) {
-                return Err(format!("symbol table {table_index} requires a NUL-bounded string table"));
+                return Err(format!(
+                    "symbol table {table_index} requires a NUL-bounded string table"
+                ));
             }
             let symbols = checked_slice(bytes, section.offset, section.size, "symbol table")?;
             let indices = match extended_indices[table_index] {
                 Some(index) => {
                     let extended = sections[index];
                     if extended.size / 4 != count {
-                        return Err(format!("symbol table {table_index} extended-index count does not match"));
+                        return Err(format!(
+                            "symbol table {table_index} extended-index count does not match"
+                        ));
                     }
-                    Some(checked_slice(bytes, extended.offset, extended.size, "extended symbol indices")?)
+                    Some(checked_slice(
+                        bytes,
+                        extended.offset,
+                        extended.size,
+                        "extended symbol indices",
+                    )?)
                 }
                 None => None,
             };
             for (symbol_index, raw) in symbols.chunks_exact(24).enumerate() {
                 let name_offset = u32_at(raw, 0) as usize;
                 if name_offset >= strings.len() {
-                    return Err(format!("symbol {table_index}:{symbol_index} has out-of-range name offset"));
+                    return Err(format!(
+                        "symbol {table_index}:{symbol_index} has out-of-range name offset"
+                    ));
                 }
                 if raw[4] & 0x0f != 2 {
                     continue; // STT_FUNC only, not imports, objects or IFUNC resolvers.
@@ -221,13 +283,21 @@ impl<'a> ElfImage<'a> {
                     continue;
                 }
                 if section_index == SHN_COMMON {
-                    return Err(format!("function {table_index}:{symbol_index} uses unsupported SHN_COMMON"));
+                    return Err(format!(
+                        "function {table_index}:{symbol_index} uses unsupported SHN_COMMON"
+                    ));
                 }
                 if section_index >= 0xff00 && !matches!(section_index, SHN_ABS | SHN_XINDEX) {
-                    return Err(format!("function {table_index}:{symbol_index} uses an unsupported reserved section index"));
+                    return Err(format!(
+                        "function {table_index}:{symbol_index} uses an unsupported reserved section index"
+                    ));
                 }
                 if section_index == SHN_XINDEX {
-                    let indices = indices.ok_or_else(|| format!("function {table_index}:{symbol_index} needs an extended-index table"))?;
+                    let indices = indices.ok_or_else(|| {
+                        format!(
+                            "function {table_index}:{symbol_index} needs an extended-index table"
+                        )
+                    })?;
                     section_index = u32_at(indices, symbol_index * 4);
                     if section_index == SHN_UNDEF {
                         continue;
@@ -235,54 +305,89 @@ impl<'a> ElfImage<'a> {
                 }
                 let address = u64_at(raw, 8);
                 let size = u64_at(raw, 16);
-                let end = address.checked_add(size)
-                    .ok_or_else(|| format!("function {table_index}:{symbol_index} address extent overflows"))?;
+                let end = address.checked_add(size).ok_or_else(|| {
+                    format!("function {table_index}:{symbol_index} address extent overflows")
+                })?;
                 if !absolute {
-                    let code_section = sections.get(section_index as usize)
-                        .ok_or_else(|| format!("function {table_index}:{symbol_index} has invalid section index"))?;
-                    if code_section.flags & SHF_EXECINSTR == 0 || code_section.section_type == SHT_NOBITS {
-                        return Err(format!("function {table_index}:{symbol_index} is not in a file-backed executable section"));
+                    let code_section = sections.get(section_index as usize).ok_or_else(|| {
+                        format!("function {table_index}:{symbol_index} has invalid section index")
+                    })?;
+                    if code_section.flags & SHF_EXECINSTR == 0
+                        || code_section.section_type == SHT_NOBITS
+                    {
+                        return Err(format!(
+                            "function {table_index}:{symbol_index} is not in a file-backed executable section"
+                        ));
                     }
                     let section_end = code_section.address + code_section.size;
                     if address < code_section.address || end > section_end {
-                        return Err(format!("function {table_index}:{symbol_index} extends outside its code section"));
+                        return Err(format!(
+                            "function {table_index}:{symbol_index} extends outside its code section"
+                        ));
                     }
                 }
                 let tail = &strings[name_offset..];
                 let inspected = &tail[..tail.len().min(MAX_NAME_BYTES + 1)];
                 let name_length = inspected.iter().position(|byte| *byte == 0)
                     .ok_or_else(|| format!("function {table_index}:{symbol_index} name exceeds {MAX_NAME_BYTES} bytes"))?;
-                total_name_bytes = total_name_bytes.checked_add(name_length)
+                total_name_bytes = total_name_bytes
+                    .checked_add(name_length)
                     .ok_or("retained function-name size overflows")?;
                 if total_name_bytes > MAX_RETAINED_NAME_BYTES {
-                    return Err(format!("retained function names exceed {MAX_RETAINED_NAME_BYTES}-byte resource limit"));
+                    return Err(format!(
+                        "retained function names exceed {MAX_RETAINED_NAME_BYTES}-byte resource limit"
+                    ));
                 }
-                let name = std::str::from_utf8(&tail[..name_length])
-                    .map_err(|_| format!("function {table_index}:{symbol_index} name is not supported UTF-8"))?;
-                let file_offset = image.map_range(address, size)
+                let name = std::str::from_utf8(&tail[..name_length]).map_err(|_| {
+                    format!("function {table_index}:{symbol_index} name is not supported UTF-8")
+                })?;
+                let file_offset = image
+                    .map_range(address, size)
                     .map_err(|error| format!("function {table_index}:{symbol_index}: {error}"))?;
-                image.functions.push(Function { name: name.to_owned(), address, size, file_offset });
+                image.functions.push(Function {
+                    name: name.to_owned(),
+                    address,
+                    size,
+                    file_offset,
+                });
             }
         }
         image.functions.sort_by(|a, b| {
-            (a.address, a.size, &a.name, a.file_offset).cmp(&(b.address, b.size, &b.name, b.file_offset))
+            (a.address, a.size, &a.name, a.file_offset).cmp(&(
+                b.address,
+                b.size,
+                &b.name,
+                b.file_offset,
+            ))
         });
         image.functions.dedup();
         image.sections = sections;
         Ok(image)
     }
 
-    pub fn entry(&self) -> u64 { self.entry }
+    pub fn entry(&self) -> u64 {
+        self.entry
+    }
 
-    pub fn functions(&self) -> &[Function] { &self.functions }
+    pub fn functions(&self) -> &[Function] {
+        &self.functions
+    }
 
-    pub(crate) fn file_bytes(&self) -> &'a [u8] { self.bytes }
+    pub(crate) fn file_bytes(&self) -> &'a [u8] {
+        self.bytes
+    }
 
-    pub(crate) fn load_segments(&self) -> &[ProgramHeader] { &self.loads }
+    pub(crate) fn load_segments(&self) -> &[ProgramHeader] {
+        &self.loads
+    }
 
-    pub(crate) fn program_headers(&self) -> &[ProgramHeader] { &self.program_headers }
+    pub(crate) fn program_headers(&self) -> &[ProgramHeader] {
+        &self.program_headers
+    }
 
-    pub(crate) fn sections(&self) -> &[Section] { &self.sections }
+    pub(crate) fn sections(&self) -> &[Section] {
+        &self.sections
+    }
 
     /// Select a complete explicit range for a stripped image. This does not
     /// discover a function or prove that the selected boundary is correct.
@@ -290,7 +395,12 @@ impl<'a> ElfImage<'a> {
         if size == 0 {
             return Err("an explicit function range requires a nonzero size".into());
         }
-        Ok(Function { name: String::new(), address, size, file_offset: self.map_range(address, size)? })
+        Ok(Function {
+            name: String::new(),
+            address,
+            size,
+            file_offset: self.map_range(address, size)?,
+        })
     }
 
     pub fn function_bytes(&self, function: &Function) -> Result<&'a [u8], String> {
@@ -299,13 +409,17 @@ impl<'a> ElfImage<'a> {
         }
         let offset = self.map_range(function.address, function.size)?;
         if offset != function.file_offset {
-            return Err("function file offset does not match its validated executable mapping".into());
+            return Err(
+                "function file offset does not match its validated executable mapping".into(),
+            );
         }
         checked_slice(self.bytes, offset as u64, function.size, "function bytes")
     }
 
     fn map_range(&self, address: u64, size: u64) -> Result<usize, String> {
-        let end = address.checked_add(size).ok_or("function address extent overflows")?;
+        let end = address
+            .checked_add(size)
+            .ok_or("function address extent overflows")?;
         let mut selected = None;
         for load in &self.loads {
             if load.flags & PF_X == 0 || load.file_size == 0 {
@@ -324,21 +438,41 @@ impl<'a> ElfImage<'a> {
                 return Err("function range has ambiguous executable PT_LOAD mappings".into());
             }
             if address < load.virtual_address || end > load_end {
-                return Err("function range crosses a file-backed executable PT_LOAD boundary".into());
+                return Err(
+                    "function range crosses a file-backed executable PT_LOAD boundary".into(),
+                );
             }
-            let offset = load.raw_offset.checked_add(address - load.virtual_address)
+            let offset = load
+                .raw_offset
+                .checked_add(address - load.virtual_address)
                 .ok_or("function file offset overflows")?;
-            selected = Some(usize::try_from(offset).map_err(|_| "function file offset exceeds host address space")?);
+            selected = Some(
+                usize::try_from(offset)
+                    .map_err(|_| "function file offset exceeds host address space")?,
+            );
         }
-        selected.ok_or_else(|| "function range is not file-backed in an executable PT_LOAD segment".into())
+        selected.ok_or_else(|| {
+            "function range is not file-backed in an executable PT_LOAD segment".into()
+        })
     }
 }
 
-fn checked_slice<'a>(bytes: &'a [u8], offset: u64, length: u64, label: &str) -> Result<&'a [u8], String> {
-    let end = offset.checked_add(length).ok_or_else(|| format!("{label} extent overflows"))?;
-    let start = usize::try_from(offset).map_err(|_| format!("{label} offset exceeds host address space"))?;
-    let end = usize::try_from(end).map_err(|_| format!("{label} end exceeds host address space"))?;
-    bytes.get(start..end).ok_or_else(|| format!("{label} is outside the file"))
+fn checked_slice<'a>(
+    bytes: &'a [u8],
+    offset: u64,
+    length: u64,
+    label: &str,
+) -> Result<&'a [u8], String> {
+    let end = offset
+        .checked_add(length)
+        .ok_or_else(|| format!("{label} extent overflows"))?;
+    let start = usize::try_from(offset)
+        .map_err(|_| format!("{label} offset exceeds host address space"))?;
+    let end =
+        usize::try_from(end).map_err(|_| format!("{label} end exceeds host address space"))?;
+    bytes
+        .get(start..end)
+        .ok_or_else(|| format!("{label} is outside the file"))
 }
 
 fn u16_at(bytes: &[u8], offset: usize) -> u16 {
@@ -357,11 +491,27 @@ fn u64_at(bytes: &[u8], offset: usize) -> u64 {
 mod tests {
     use super::*;
 
-    fn put16(bytes: &mut [u8], offset: usize, value: u16) { bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes()); }
-    fn put32(bytes: &mut [u8], offset: usize, value: u32) { bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes()); }
-    fn put64(bytes: &mut [u8], offset: usize, value: u64) { bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes()); }
+    fn put16(bytes: &mut [u8], offset: usize, value: u16) {
+        bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+    }
+    fn put32(bytes: &mut [u8], offset: usize, value: u32) {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    fn put64(bytes: &mut [u8], offset: usize, value: u64) {
+        bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
 
-    fn section(bytes: &mut [u8], index: usize, kind: u32, flags: u64, address: u64, offset: u64, size: u64, link: u32, entry_size: u64) {
+    fn section(
+        bytes: &mut [u8],
+        index: usize,
+        kind: u32,
+        flags: u64,
+        address: u64,
+        offset: u64,
+        size: u64,
+        link: u32,
+        entry_size: u64,
+    ) {
         let base = 768 + index * 64;
         put32(bytes, base + 4, kind);
         put64(bytes, base + 8, flags);
@@ -415,11 +565,24 @@ mod tests {
         let image = ElfImage::parse(&bytes).unwrap();
         assert_eq!(image.entry(), 0x400100);
         assert_eq!(image.functions().len(), 3);
-        let foo = image.functions().iter().find(|function| function.name == "foo").unwrap();
+        let foo = image
+            .functions()
+            .iter()
+            .find(|function| function.name == "foo")
+            .unwrap();
         assert_eq!(foo.file_offset, 256);
         assert_eq!(image.function_bytes(foo).unwrap(), &[0x90; 16]);
-        let zero = image.functions().iter().find(|function| function.name == "zero").unwrap();
-        assert!(image.function_bytes(zero).unwrap_err().contains("zero-size"));
+        let zero = image
+            .functions()
+            .iter()
+            .find(|function| function.name == "zero")
+            .unwrap();
+        assert!(
+            image
+                .function_bytes(zero)
+                .unwrap_err()
+                .contains("zero-size")
+        );
         let selected = image.function_range(0x400102, 4).unwrap();
         assert_eq!(selected.file_offset, 258);
         assert_eq!(image.function_bytes(&selected).unwrap(), &[0x90; 4]);
@@ -451,16 +614,32 @@ mod tests {
     fn rejects_truncated_tables_payloads_and_invalid_links() {
         let mut bytes = fixture();
         bytes.truncate(1000);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("PT_LOAD payload"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("PT_LOAD payload")
+        );
         let mut bytes = fixture();
         put64(&mut bytes, 40, 1000);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("section table"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("section table")
+        );
         let mut bytes = fixture();
         put64(&mut bytes, 768 + 3 * 64 + 24, 1016);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("section payload"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("section payload")
+        );
         let mut bytes = fixture();
         put32(&mut bytes, 768 + 2 * 64 + 40, 99);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("string-table link"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("string-table link")
+        );
     }
 
     #[test]
@@ -479,35 +658,66 @@ mod tests {
         assert!(ElfImage::parse(&bytes).unwrap_err().contains("24-byte"));
         let mut bytes = fixture();
         put64(&mut bytes, 512 + 24 + 16, 17);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("code section"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("code section")
+        );
     }
 
     #[test]
     fn rejects_nonfilebacked_ambiguous_and_overflowing_ranges() {
         let bytes = fixture();
         let image = ElfImage::parse(&bytes).unwrap();
-        assert!(image.function_range(0x400400, 1).unwrap_err().contains("not file-backed"));
-        assert!(image.function_range(u64::MAX, 2).unwrap_err().contains("overflows"));
+        assert!(
+            image
+                .function_range(0x400400, 1)
+                .unwrap_err()
+                .contains("not file-backed")
+        );
+        assert!(
+            image
+                .function_range(u64::MAX, 2)
+                .unwrap_err()
+                .contains("overflows")
+        );
         let mut false_offset = image.function_range(0x400100, 16).unwrap();
         false_offset.file_offset += 1;
-        assert!(image.function_bytes(&false_offset).unwrap_err().contains("does not match"));
+        assert!(
+            image
+                .function_bytes(&false_offset)
+                .unwrap_err()
+                .contains("does not match")
+        );
         let mut bytes = fixture();
         bytes.copy_within(64..120, 120);
         put16(&mut bytes, 56, 2);
         assert!(ElfImage::parse(&bytes).unwrap_err().contains("ambiguous"));
         let mut bytes = fixture();
         put64(&mut bytes, 96, 256);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("not file-backed"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("not file-backed")
+        );
         let mut bytes = fixture();
         put64(&mut bytes, 80, u64::MAX - 512);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("virtual extent overflows"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("virtual extent overflows")
+        );
     }
 
     #[test]
     fn supports_extended_symbol_section_indices_and_rejects_missing_table() {
         let mut bytes = fixture();
         put16(&mut bytes, 512 + 24 + 6, SHN_XINDEX as u16);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("extended-index table"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("extended-index table")
+        );
         bytes.resize(1088, 0);
         put64(&mut bytes, 96, 1088);
         put64(&mut bytes, 104, 1088);
@@ -525,11 +735,19 @@ mod tests {
         assert!(ElfImage::parse(&bytes).unwrap_err().contains("machine 62"));
         let mut bytes = fixture();
         put16(&mut bytes, 16, 1);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("ET_EXEC/ET_DYN"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("ET_EXEC/ET_DYN")
+        );
         let mut bytes = fixture();
         put16(&mut bytes, 60, 0);
         put64(&mut bytes, 768 + 32, u64::from(MAX_SECTIONS) + 1);
-        assert!(ElfImage::parse(&bytes).unwrap_err().contains("section count"));
+        assert!(
+            ElfImage::parse(&bytes)
+                .unwrap_err()
+                .contains("section count")
+        );
     }
 
     #[test]
@@ -555,9 +773,21 @@ mod tests {
             bytes[64 + index * 56..64 + (index + 1) * 56].copy_from_slice(&load);
         }
         bytes[section_offset..section_offset + 4 * 64].copy_from_slice(&template[768..1024]);
-        put64(&mut bytes, section_offset + 2 * 64 + 24, symbol_offset as u64);
-        put64(&mut bytes, section_offset + 2 * 64 + 32, (symbol_count * 24) as u64);
-        put64(&mut bytes, section_offset + 3 * 64 + 24, strings_offset as u64);
+        put64(
+            &mut bytes,
+            section_offset + 2 * 64 + 24,
+            symbol_offset as u64,
+        );
+        put64(
+            &mut bytes,
+            section_offset + 2 * 64 + 32,
+            (symbol_count * 24) as u64,
+        );
+        put64(
+            &mut bytes,
+            section_offset + 3 * 64 + 24,
+            strings_offset as u64,
+        );
         put64(&mut bytes, section_offset + 3 * 64 + 32, 1);
         let error = ElfImage::parse(&bytes).unwrap_err();
         assert!(error.contains("symbol/load mapping work"), "{error}");

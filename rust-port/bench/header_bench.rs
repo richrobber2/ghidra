@@ -1,6 +1,10 @@
 //! Compatible header decoding plus observable normalized-field digest only.
-use ghidra_elf::{parse_header, ParsePolicy, ParsedHeader};
-use std::{env, fs, hint::black_box, time::{Duration, Instant}};
+use ghidra_elf::{ParsePolicy, ParsedHeader, parse_header};
+use std::{
+    env, fs,
+    hint::black_box,
+    time::{Duration, Instant},
+};
 
 const BATCH_PASSES: u64 = 256;
 
@@ -63,8 +67,13 @@ fn measure(inputs: &[Vec<u8>], minimum: Duration) -> String {
             break;
         }
     }
-    format!("{{\"elapsed_ns\":{},\"passes\":{},\"parses\":{},\"checksum\":\"{}\"}}",
-        elapsed.as_nanos(), passes, passes * inputs.len() as u64, checksum)
+    format!(
+        "{{\"elapsed_ns\":{},\"passes\":{},\"parses\":{},\"checksum\":\"{}\"}}",
+        elapsed.as_nanos(),
+        passes,
+        passes * inputs.len() as u64,
+        checksum
+    )
 }
 
 fn main() {
@@ -73,19 +82,33 @@ fn main() {
     let warmup_ms: u64 = args[1].parse().expect("warmup milliseconds");
     let sample_ms: u64 = args[2].parse().expect("sample milliseconds");
     let samples: usize = args[3].parse().expect("sample count");
-    let inputs: Vec<Vec<u8>> = args[4..].iter().map(|file| fs::read(file).expect("input file")).collect();
+    let inputs: Vec<Vec<u8>> = args[4..]
+        .iter()
+        .map(|file| fs::read(file).expect("input file"))
+        .collect();
     let mut corpus_checksum = 0_u64;
-    let digests: Vec<String> = inputs.iter().map(|input| {
-        let header = parse_header(input, ParsePolicy::GhidraCompatible).expect("benchmark corpus");
-        let digest = digest(&header);
-        corpus_checksum = corpus_checksum.wrapping_add(digest);
-        format!("\"{digest}\"")
-    }).collect();
+    let digests: Vec<String> = inputs
+        .iter()
+        .map(|input| {
+            let header =
+                parse_header(input, ParsePolicy::GhidraCompatible).expect("benchmark corpus");
+            let digest = digest(&header);
+            corpus_checksum = corpus_checksum.wrapping_add(digest);
+            format!("\"{digest}\"")
+        })
+        .collect();
     if warmup_ms > 0 {
         black_box(measure(&inputs, Duration::from_millis(warmup_ms)));
     }
-    let results: Vec<String> = (0..samples).map(|_| measure(&inputs, Duration::from_millis(sample_ms))).collect();
+    let results: Vec<String> = (0..samples)
+        .map(|_| measure(&inputs, Duration::from_millis(sample_ms)))
+        .collect();
     let peak_rss_kib = peak_rss_kib();
-    println!("{{\"process_vm_hwm_kib\":{},\"corpus_checksum\":\"{}\",\"digests\":[{}],\"samples\":[{}]}}",
-        peak_rss_kib, corpus_checksum, digests.join(","), results.join(","));
+    println!(
+        "{{\"process_vm_hwm_kib\":{},\"corpus_checksum\":\"{}\",\"digests\":[{}],\"samples\":[{}]}}",
+        peak_rss_kib,
+        corpus_checksum,
+        digests.join(","),
+        results.join(",")
+    );
 }

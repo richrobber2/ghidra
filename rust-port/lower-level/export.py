@@ -5,10 +5,14 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
-WRAPPER = '/workspace/ghidra-agent/ghidra-agent'
+sys.path.insert(0, str(ROOT.parent))
+from localenv import DECOMPILE_ENGINE, GHIDRA_AGENT  # noqa: E402
+
+WRAPPER = str(GHIDRA_AGENT / 'ghidra-agent')
 
 
 def jobs():
@@ -29,7 +33,7 @@ def jobs():
             sha256=method['sha256'], base=method['main_code_begin'],
             specs=[dict(label=method['method'], address_hex=hex(entry),
             size=int(method['main_code_end'], 16) - entry, set_body_to_requested_extent=True)]))
-    engine = '/workspace/ghidra/Ghidra/Features/Decompiler/build/os/linux_x86_64/decompile'
+    engine = str(DECOMPILE_ENGINE)
     result.append(dict(name='native-engine', binary=engine,
         sha256='876c28d48c07126e5db94946c10719eeb96b057c9271daa0114df34e598f262a',
         specs=[dict(label='ghidra_Action_perform', image_offset_hex='0x1f2850', size=0x139,

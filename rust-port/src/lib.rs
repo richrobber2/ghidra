@@ -161,13 +161,19 @@ impl std::error::Error for ParseError {}
 /// No input-dependent allocation or iteration over declared table counts occurs.
 pub fn parse_header(bytes: &[u8], policy: ParsePolicy) -> Result<ParsedHeader, ParseError> {
     if bytes.len() < 4 {
-        return Err(ParseError::TruncatedHeader { needed: 4, actual: bytes.len() });
+        return Err(ParseError::TruncatedHeader {
+            needed: 4,
+            actual: bytes.len(),
+        });
     }
     if bytes[..4] != *b"\x7fELF" {
         return Err(ParseError::BadMagic);
     }
     if bytes.len() < 34 {
-        return Err(ParseError::TruncatedHeader { needed: 34, actual: bytes.len() });
+        return Err(ParseError::TruncatedHeader {
+            needed: 34,
+            actual: bytes.len(),
+        });
     }
     let compatible = policy == ParsePolicy::GhidraCompatible;
     let mut diagnostics = Diagnostics::default();
@@ -190,7 +196,10 @@ pub fn parse_header(bytes: &[u8], policy: ParsePolicy) -> Result<ParsedHeader, P
     let mut padded = [0u8; 64];
     let header_bytes = if bytes.len() < header_len {
         if !compatible {
-            return Err(ParseError::TruncatedHeader { needed: header_len, actual: bytes.len() });
+            return Err(ParseError::TruncatedHeader {
+                needed: header_len,
+                actual: bytes.len(),
+            });
         }
         diagnostics.insert(Diagnostic::TruncatedHeaderZeroFilled);
         padded[..bytes.len()].copy_from_slice(bytes);
@@ -215,28 +224,49 @@ pub fn parse_header(bytes: &[u8], policy: ParsePolicy) -> Result<ParsedHeader, P
 #[inline]
 fn u16_at<const LE: bool>(bytes: &[u8], offset: usize) -> u16 {
     let value = bytes[offset..offset + 2].try_into().unwrap();
-    if LE { u16::from_le_bytes(value) } else { u16::from_be_bytes(value) }
+    if LE {
+        u16::from_le_bytes(value)
+    } else {
+        u16::from_be_bytes(value)
+    }
 }
 
 #[inline]
 fn u32_at<const LE: bool>(bytes: &[u8], offset: usize) -> u32 {
     let value = bytes[offset..offset + 4].try_into().unwrap();
-    if LE { u32::from_le_bytes(value) } else { u32::from_be_bytes(value) }
+    if LE {
+        u32::from_le_bytes(value)
+    } else {
+        u32::from_be_bytes(value)
+    }
 }
 
 #[inline]
 fn u64_at<const LE: bool>(bytes: &[u8], offset: usize) -> u64 {
     let value = bytes[offset..offset + 8].try_into().unwrap();
-    if LE { u64::from_le_bytes(value) } else { u64::from_be_bytes(value) }
+    if LE {
+        u64::from_le_bytes(value)
+    } else {
+        u64::from_be_bytes(value)
+    }
 }
 
 fn decode_header<const LE: bool>(bytes: &[u8]) -> ParsedHeader {
     let is_64 = bytes[4] == 2;
     let (entry, phoff, shoff, tail) = if is_64 {
-        (u64_at::<LE>(bytes, 24), u64_at::<LE>(bytes, 32), u64_at::<LE>(bytes, 40), 48)
+        (
+            u64_at::<LE>(bytes, 24),
+            u64_at::<LE>(bytes, 32),
+            u64_at::<LE>(bytes, 40),
+            48,
+        )
     } else {
-        (u32_at::<LE>(bytes, 24) as u64, u32_at::<LE>(bytes, 28) as u64,
-         u32_at::<LE>(bytes, 32) as u64, 36)
+        (
+            u32_at::<LE>(bytes, 24) as u64,
+            u32_at::<LE>(bytes, 28) as u64,
+            u32_at::<LE>(bytes, 32) as u64,
+            36,
+        )
     };
     let raw_phnum = u16_at::<LE>(bytes, tail + 8);
     let raw_shnum = u16_at::<LE>(bytes, tail + 12);
@@ -249,7 +279,9 @@ fn decode_header<const LE: bool>(bytes: &[u8]) -> ParsedHeader {
         elf_type: u16_at::<LE>(bytes, 16),
         machine: u16_at::<LE>(bytes, 18),
         version: u32_at::<LE>(bytes, 20),
-        entry, phoff, shoff,
+        entry,
+        phoff,
+        shoff,
         flags: u32_at::<LE>(bytes, tail),
         ehsize: u16_at::<LE>(bytes, tail + 4),
         phentsize: u16_at::<LE>(bytes, tail + 6),
@@ -257,7 +289,9 @@ fn decode_header<const LE: bool>(bytes: &[u8]) -> ParsedHeader {
         shentsize: u16_at::<LE>(bytes, tail + 10),
         shnum: raw_shnum as u32,
         shstrndx: raw_shstrndx as u32,
-        raw_phnum, raw_shnum, raw_shstrndx,
+        raw_phnum,
+        raw_shnum,
+        raw_shstrndx,
         diagnostics: Diagnostics::default(),
     }
 }
@@ -273,7 +307,11 @@ struct SectionZero {
 fn decode_section<const LE: bool>(bytes: &[u8], is_64: bool) -> SectionZero {
     SectionZero {
         section_type: u32_at::<LE>(bytes, 4),
-        size: if is_64 { u64_at::<LE>(bytes, 32) } else { u32_at::<LE>(bytes, 20) as u64 },
+        size: if is_64 {
+            u64_at::<LE>(bytes, 32)
+        } else {
+            u32_at::<LE>(bytes, 20) as u64
+        },
         link: u32_at::<LE>(bytes, if is_64 { 40 } else { 24 }),
         info: u32_at::<LE>(bytes, if is_64 { 44 } else { 28 }),
     }
@@ -287,7 +325,11 @@ fn section_from_bytes(bytes: &[u8], header: &ParsedHeader) -> SectionZero {
     }
 }
 
-fn compatible_section(bytes: &[u8], header: &mut ParsedHeader, gate_size: i16) -> Result<Option<SectionZero>, ParseError> {
+fn compatible_section(
+    bytes: &[u8],
+    header: &mut ParsedHeader,
+    gate_size: i16,
+) -> Result<Option<SectionZero>, ParseError> {
     // Java's short entry size is signed. During e_phnum resolution its final
     // field has not been assigned yet and is still zero. Preserve both details,
     // using widened arithmetic so malformed offsets cannot overflow or wrap.
@@ -296,7 +338,8 @@ fn compatible_section(bytes: &[u8], header: &mut ParsedHeader, gate_size: i16) -
     {
         return Err(ParseError::OffsetOverflow);
     }
-    if header.shoff == 0 || header.shoff > i64::MAX as u64
+    if header.shoff == 0
+        || header.shoff > i64::MAX as u64
         || header.shoff as i128 + gate_size as i128 > bytes.len() as i128
     {
         if header.shoff != 0 || header.raw_phnum == u16::MAX || header.raw_shstrndx == u16::MAX {
@@ -309,7 +352,9 @@ fn compatible_section(bytes: &[u8], header: &mut ParsedHeader, gate_size: i16) -
     let tail = bytes.get(offset..).unwrap_or_default();
     let mut padded = [0u8; 64];
     let section_bytes = if tail.len() < length {
-        header.diagnostics.insert(Diagnostic::TruncatedSectionZeroFilled);
+        header
+            .diagnostics
+            .insert(Diagnostic::TruncatedSectionZeroFilled);
         padded[..tail.len()].copy_from_slice(tail);
         &padded[..length]
     } else {
@@ -336,7 +381,9 @@ fn resolve_compatible(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), Par
     if header.raw_phnum == u16::MAX {
         section = compatible_section(bytes, header, 0)?;
         header.phnum = match section {
-            Some(s) if s.section_type == 0 => compatible_value(s.info as u64, &mut header.diagnostics),
+            Some(s) if s.section_type == 0 => {
+                compatible_value(s.info as u64, &mut header.diagnostics)
+            }
             _ => 0,
         };
     }
@@ -351,7 +398,9 @@ fn resolve_compatible(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), Par
     }
     if header.shnum == 0 {
         if header.raw_shstrndx != 0 {
-            header.diagnostics.insert(Diagnostic::StringIndexClearedWithoutSections);
+            header
+                .diagnostics
+                .insert(Diagnostic::StringIndexClearedWithoutSections);
         }
         header.shstrndx = 0;
     } else if header.raw_shstrndx == u16::MAX {
@@ -359,7 +408,9 @@ fn resolve_compatible(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), Par
             section = compatible_section(bytes, header, header.shentsize as i16)?;
         }
         header.shstrndx = match section {
-            Some(s) if s.section_type == 0 => compatible_value(s.link as u64, &mut header.diagnostics),
+            Some(s) if s.section_type == 0 => {
+                compatible_value(s.link as u64, &mut header.diagnostics)
+            }
             _ => 0,
         };
     }
@@ -378,15 +429,24 @@ fn resolve_strict(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), ParseEr
     let expected_program = if is_64 { 56 } else { 32 };
     let expected_section = if is_64 { 64 } else { 40 };
     if header.ehsize != expected_header {
-        return Err(ParseError::InvalidHeaderSize { expected: expected_header, actual: header.ehsize });
+        return Err(ParseError::InvalidHeaderSize {
+            expected: expected_header,
+            actual: header.ehsize,
+        });
     }
     if header.raw_shnum >= 0xff00 {
         return Err(ParseError::ReservedSectionCount(header.raw_shnum));
     }
-    let need_section = header.raw_phnum == u16::MAX || header.raw_shstrndx == u16::MAX
+    let need_section = header.raw_phnum == u16::MAX
+        || header.raw_shstrndx == u16::MAX
         || (header.raw_shnum == 0 && header.shoff != 0);
-    if (header.shoff != 0 || header.raw_shnum != 0 || need_section) && header.shentsize != expected_section {
-        return Err(ParseError::InvalidSectionEntrySize { expected: expected_section, actual: header.shentsize });
+    if (header.shoff != 0 || header.raw_shnum != 0 || need_section)
+        && header.shentsize != expected_section
+    {
+        return Err(ParseError::InvalidSectionEntrySize {
+            expected: expected_section,
+            actual: header.shentsize,
+        });
     }
     if header.raw_shnum != 0 && header.shoff == 0 {
         return Err(ParseError::MissingSectionTableOffset);
@@ -396,8 +456,12 @@ fn resolve_strict(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), ParseEr
             return Err(ParseError::MissingSectionZero);
         }
         let offset = usize::try_from(header.shoff).map_err(|_| ParseError::OffsetOverflow)?;
-        let end = offset.checked_add(expected_section as usize).ok_or(ParseError::OffsetOverflow)?;
-        let section_bytes = bytes.get(offset..end).ok_or(ParseError::TruncatedSectionZero)?;
+        let end = offset
+            .checked_add(expected_section as usize)
+            .ok_or(ParseError::OffsetOverflow)?;
+        let section_bytes = bytes
+            .get(offset..end)
+            .ok_or(ParseError::TruncatedSectionZero)?;
         let section = section_from_bytes(section_bytes, header);
         if section.section_type != 0 {
             return Err(ParseError::InvalidSectionZeroType(section.section_type));
@@ -406,7 +470,8 @@ fn resolve_strict(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), ParseEr
             header.phnum = section.info;
         }
         if header.raw_shnum == 0 {
-            header.shnum = u32::try_from(section.size).map_err(|_| ParseError::ExtendedValueOverflow)?;
+            header.shnum =
+                u32::try_from(section.size).map_err(|_| ParseError::ExtendedValueOverflow)?;
         }
         if header.raw_shstrndx == u16::MAX {
             header.shstrndx = section.link;
@@ -414,7 +479,10 @@ fn resolve_strict(bytes: &[u8], header: &mut ParsedHeader) -> Result<(), ParseEr
     }
     if header.phnum != 0 {
         if header.phentsize != expected_program {
-            return Err(ParseError::InvalidProgramEntrySize { expected: expected_program, actual: header.phentsize });
+            return Err(ParseError::InvalidProgramEntrySize {
+                expected: expected_program,
+                actual: header.phentsize,
+            });
         }
         if header.phoff == 0 {
             return Err(ParseError::MissingProgramTableOffset);
@@ -441,9 +509,17 @@ mod tests {
     fn canonical_classes_and_encodings() {
         for (bytes, bits, little) in [
             (&include_bytes!("../fixtures/valid-32-le.elf")[..], 32, true),
-            (&include_bytes!("../fixtures/valid-32-be.elf")[..], 32, false),
+            (
+                &include_bytes!("../fixtures/valid-32-be.elf")[..],
+                32,
+                false,
+            ),
             (&include_bytes!("../fixtures/valid-64-le.elf")[..], 64, true),
-            (&include_bytes!("../fixtures/valid-64-be.elf")[..], 64, false),
+            (
+                &include_bytes!("../fixtures/valid-64-be.elf")[..],
+                64,
+                false,
+            ),
         ] {
             for policy in [ParsePolicy::Strict, ParsePolicy::GhidraCompatible] {
                 let h = parse_header(bytes, policy).unwrap();
@@ -458,11 +534,17 @@ mod tests {
     fn every_header_truncation_has_explicit_policy() {
         let bytes = valid();
         for n in 0..64 {
-            assert!(parse_header(&bytes[..n], ParsePolicy::Strict).is_err(), "length {n}");
+            assert!(
+                parse_header(&bytes[..n], ParsePolicy::Strict).is_err(),
+                "length {n}"
+            );
             let compatible = parse_header(&bytes[..n], ParsePolicy::GhidraCompatible);
             assert_eq!(compatible.is_ok(), n >= 34, "length {n}");
             if let Ok(h) = compatible {
-                assert!(h.diagnostics.contains(Diagnostic::TruncatedHeaderZeroFilled));
+                assert!(
+                    h.diagnostics
+                        .contains(Diagnostic::TruncatedHeaderZeroFilled)
+                );
             }
         }
     }
@@ -475,28 +557,50 @@ mod tests {
         assert!(!h.declared_little_endian);
         assert!(h.header_little_endian);
         assert!(h.diagnostics.contains(Diagnostic::DeclaredEndianOverridden));
-        assert!(matches!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidVersion(_))));
+        assert!(matches!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidVersion(_))
+        ));
         bytes[5] = 255;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidEncoding(255)));
-        assert!(parse_header(&bytes, ParsePolicy::GhidraCompatible).unwrap().header_little_endian);
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidEncoding(255))
+        );
+        assert!(
+            parse_header(&bytes, ParsePolicy::GhidraCompatible)
+                .unwrap()
+                .header_little_endian
+        );
     }
 
     #[test]
     fn strict_versions_and_required_sizes() {
         let mut bytes = valid();
         bytes[6] = 0;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidIdentVersion(0)));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidIdentVersion(0))
+        );
         bytes[6] = 1;
         bytes[20] = 0;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidVersion(0)));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidVersion(0))
+        );
         bytes[20] = 1;
         bytes[52] = 0;
-        assert!(matches!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidHeaderSize { .. })));
+        assert!(matches!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidHeaderSize { .. })
+        ));
         bytes[52] = 64;
         bytes[54] = 1; // irrelevant while there are no program headers
         assert!(parse_header(&bytes, ParsePolicy::Strict).is_ok());
         bytes[56] = 1;
-        assert!(matches!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidProgramEntrySize { .. })));
+        assert!(matches!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidProgramEntrySize { .. })
+        ));
     }
 
     #[test]
@@ -505,11 +609,17 @@ mod tests {
         bytes.truncate(112); // info is available, last 16 bytes are missing
         let h = parse_header(&bytes, ParsePolicy::GhidraCompatible).unwrap();
         assert_eq!((h.phnum, h.shnum, h.shstrndx), (2, 3, 1));
-        assert!(h.diagnostics.contains(Diagnostic::TruncatedSectionZeroFilled));
+        assert!(
+            h.diagnostics
+                .contains(Diagnostic::TruncatedSectionZeroFilled)
+        );
         bytes[56..58].copy_from_slice(&0u16.to_le_bytes()); // no early section0 cache
         let h = parse_header(&bytes, ParsePolicy::GhidraCompatible).unwrap();
         assert_eq!((h.phnum, h.shnum, h.shstrndx), (0, 0, 0));
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::TruncatedSectionZero));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::TruncatedSectionZero)
+        );
     }
 
     #[test]
@@ -519,23 +629,43 @@ mod tests {
         let h = parse_header(&bytes, ParsePolicy::Strict).unwrap();
         assert_eq!((h.phnum, h.shnum, h.shstrndx), (2, 3, 1));
         bytes[96..104].copy_from_slice(&(u32::MAX as u64 + 1).to_le_bytes());
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::ExtendedValueOverflow));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::ExtendedValueOverflow)
+        );
         bytes[40..48].copy_from_slice(&u64::MAX.to_le_bytes());
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::OffsetOverflow));
-        assert_eq!(parse_header(&bytes, ParsePolicy::GhidraCompatible).unwrap().shnum, 0);
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::OffsetOverflow)
+        );
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::GhidraCompatible)
+                .unwrap()
+                .shnum,
+            0
+        );
     }
 
     #[test]
     fn strict_string_index_and_missing_offsets() {
         let mut bytes = valid();
         bytes[62] = 1;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::InvalidStringTableIndex(1)));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::InvalidStringTableIndex(1))
+        );
         bytes[62] = 0;
         bytes[56] = 1;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::MissingProgramTableOffset));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::MissingProgramTableOffset)
+        );
         bytes[56] = 0;
         bytes[60] = 1;
-        assert_eq!(parse_header(&bytes, ParsePolicy::Strict), Err(ParseError::MissingSectionTableOffset));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::Strict),
+            Err(ParseError::MissingSectionTableOffset)
+        );
     }
 
     #[test]
@@ -543,13 +673,24 @@ mod tests {
         let mut bytes = valid();
         for offset in [i64::MAX as u64 - 3, i64::MAX as u64, i64::MAX as u64 - 63] {
             bytes[40..48].copy_from_slice(&offset.to_le_bytes());
-            assert_eq!(parse_header(&bytes, ParsePolicy::GhidraCompatible), Err(ParseError::OffsetOverflow));
+            assert_eq!(
+                parse_header(&bytes, ParsePolicy::GhidraCompatible),
+                Err(ParseError::OffsetOverflow)
+            );
         }
         // The first extended-program-count lookup uses a zero gate size and
         // rejects the out-of-file offset before the later positive-size lookup.
         bytes[56..58].copy_from_slice(&u16::MAX.to_le_bytes());
-        assert_eq!(parse_header(&bytes, ParsePolicy::GhidraCompatible), Err(ParseError::OffsetOverflow));
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::GhidraCompatible),
+            Err(ParseError::OffsetOverflow)
+        );
         bytes[40..48].copy_from_slice(&(i64::MAX as u64 + 1).to_le_bytes());
-        assert_eq!(parse_header(&bytes, ParsePolicy::GhidraCompatible).unwrap().shnum, 0);
+        assert_eq!(
+            parse_header(&bytes, ParsePolicy::GhidraCompatible)
+                .unwrap()
+                .shnum,
+            0
+        );
     }
 }

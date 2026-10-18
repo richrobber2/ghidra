@@ -7,6 +7,10 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from localenv import resolve, snapshot_path  # noqa: E402
 
 MASK64 = (1 << 64) - 1
 PROTOCOL = {"processes": 3, "warmup_ms": 10_000, "sample_ms": 500, "samples": 5}
@@ -41,8 +45,8 @@ def audit(directory: Path, external: bool) -> dict:
         path = directory / entry["path"]
         require(path.stat().st_size == entry["bytes"] and sha256(path) == entry["sha256"], f"corpus bytes changed: {path}")
     for original, expected in results["source_sha256"].items():
-        source = Path(original)
-        snapshot = directory / "source-snapshot" / source.relative_to("/workspace")
+        source = resolve(original)
+        snapshot = directory / "source-snapshot" / snapshot_path(original)
         require(sha256(snapshot) == expected, f"source snapshot changed: {snapshot}")
         if external:
             require(sha256(source) == expected, f"live source changed: {source}")

@@ -17,9 +17,12 @@ import time
 ROOT = Path(__file__).resolve().parent
 COMPONENT = ROOT.parent
 PARENT = COMPONENT.parent
-WRAPPER = Path('/workspace/ghidra-agent/ghidra-agent')
+sys.path.insert(0, str(PARENT))
+from localenv import DECOMPILE_ENGINE, GHIDRA_AGENT  # noqa: E402
+
+WRAPPER = GHIDRA_AGENT / 'ghidra-agent'
 EXPORTER = PARENT / 'lower-level/tools/SelectedExport.java'
-ENGINE = Path('/workspace/ghidra/Ghidra/Features/Decompiler/build/os/linux_x86_64/decompile')
+ENGINE = DECOMPILE_ENGINE
 ORIGINAL_ENGINE_SHA256 = '876c28d48c07126e5db94946c10719eeb96b057c9271daa0114df34e598f262a'
 TARGETS = {
     'parse_program_headers': ('ghidra_elf_segments::parse_program_headers',),
@@ -30,7 +33,7 @@ SOURCES = [
     COMPONENT / 'Cargo.toml', COMPONENT / 'Cargo.lock',
     COMPONENT / 'src/lib.rs', COMPONENT / 'src/main.rs',
     PARENT / 'Cargo.toml', PARENT / 'src/lib.rs',
-    EXPORTER, WRAPPER, Path('/workspace/ghidra-agent/cli.py'), ROOT / 'run.py',
+    EXPORTER, WRAPPER, GHIDRA_AGENT / 'cli.py', ROOT / 'run.py',
 ]
 
 

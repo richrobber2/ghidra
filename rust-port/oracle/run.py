@@ -1,10 +1,10 @@
 """Compile and execute the original Java parser against the bounded fixture corpus."""
 from pathlib import Path
-import json, os, subprocess
+import json, os, subprocess, sys
 
 ROOT=Path(__file__).resolve().parents[1]
-GHIDRA=Path('/workspace/ghidra')
-JAVA=Path('/workspace/toolchains/jdk-25.0.4.1/bin')
+sys.path.insert(0,str(ROOT))
+from localenv import GHIDRA, JAVA  # noqa: E402
 subprocess.run(['python3',str(ROOT/'oracle/fixtures.py')],check=True)
 classes=ROOT/'oracle/classes'; classes.mkdir(exist_ok=True)
 jars=sorted(GHIDRA.glob('Ghidra/**/build/libs/*.jar'))

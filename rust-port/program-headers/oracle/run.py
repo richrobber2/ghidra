@@ -10,8 +10,8 @@ import time
 from fixtures import generate
 
 ROOT = Path(__file__).resolve().parents[1]
-GHIDRA = Path('/workspace/ghidra')
-JAVA = Path('/workspace/toolchains/jdk-25.0.4.1/bin')
+sys.path.insert(0, str(ROOT.parent))
+from localenv import GHIDRA, JAVA  # noqa: E402
 
 
 def sha(path):

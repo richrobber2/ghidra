@@ -15,13 +15,14 @@ import platform
 import shutil
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "bench"
-GHIDRA = Path("/workspace/ghidra")
-JAVA = Path("/workspace/toolchains/jdk-25.0.4.1/bin")
+sys.path.insert(0, str(ROOT))
+from localenv import GHIDRA, JAVA, cargo_env, tool  # noqa: E402
 MASK64 = (1 << 64) - 1
 
 
@@ -63,11 +64,8 @@ def prepare_programs() -> tuple[dict[str, list[str]], dict]:
     classes.mkdir(exist_ok=True)
     subprocess.run([str(JAVA / "javac"), "-cp", classpath, "-d", str(classes),
                     str(BENCH / "ElfHeaderBench.java")], check=True)
-    env = dict(os.environ)
-    env["CARGO_HOME"] = "/workspace/toolchains/rust/cargo"
-    env["RUSTUP_HOME"] = "/workspace/toolchains/rust/rustup"
-    env["PATH"] = env["CARGO_HOME"] + "/bin:" + env["PATH"]
-    cargo = env["CARGO_HOME"] + "/bin/cargo"
+    env = cargo_env(dict(os.environ))
+    cargo = tool("cargo", env)
     programs = {"java": [str(JAVA / "java"), "-Xms64m", "-Xmx256m", "-cp",
                           str(classes) + os.pathsep + classpath, "ElfHeaderBench"]}
     builds = []
@@ -85,7 +83,7 @@ def prepare_programs() -> tuple[dict[str, list[str]], dict]:
         builds.append({"variant": name, "command": command, "RUSTFLAGS": flags,
                        "executable_sha256": sha256(Path(programs[name][0]))})
     return programs, {"builds": builds, "java_version": output([str(JAVA / "java"), "-version"]),
-                      "rustc_version": output([env["CARGO_HOME"] + "/bin/rustc", "-Vv"], env=env),
+                      "rustc_version": output([tool("rustc", env), "-Vv"], env=env),
                       "java_heap_options": ["-Xms64m", "-Xmx256m"]}
 
 

@@ -23,8 +23,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "bench"
-GHIDRA = Path("/workspace/ghidra")
-JAVA = Path("/workspace/toolchains/jdk-25.0.4.1/bin")
+sys.path.insert(0, str(ROOT.parent))
+from localenv import GHIDRA, JAVA, cargo_env, snapshot_path, tool  # noqa: E402
 MASK64 = (1 << 64) - 1
 PROTOCOL = {"processes": 3, "warmup_ms": 10_000, "sample_ms": 500, "samples": 5}
 SMOKE = {"processes": 1, "warmup_ms": 100, "sample_ms": 50, "samples": 2}
@@ -166,17 +166,15 @@ def prepare(run: Run) -> tuple[dict[str, list[str]], dict]:
     classes = run.directory / "classes"
     classes.mkdir()
     run.command("javac", [str(JAVA / "javac"), "-cp", classpath, "-d", str(classes), str(BENCH / "ElfProgramHeadersBench.java")])
-    env = dict(os.environ)
-    env.update({"CARGO_HOME": "/workspace/toolchains/rust/cargo", "RUSTUP_HOME": "/workspace/toolchains/rust/rustup",
-                "CARGO_TARGET_DIR": str(run.directory / "target"), "RUSTFLAGS": ""})
-    env["PATH"] = env["CARGO_HOME"] + "/bin:" + env["PATH"]
+    env = cargo_env(dict(os.environ))
+    env.update({"CARGO_TARGET_DIR": str(run.directory / "target"), "RUSTFLAGS": ""})
     for key in ("CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"):
         env.pop(key, None)
-    run.command("cargo-build", [env["CARGO_HOME"] + "/bin/cargo", "build", "--manifest-path", str(ROOT / "Cargo.toml"),
+    run.command("cargo-build", [tool("cargo", env), "build", "--manifest-path", str(ROOT / "Cargo.toml"),
                                "--offline", "--locked", "--release", "--bin", "segments-bench"], env=env)
     executable = run.directory / "target/release/segments-bench"
     java_version = run.command("java-version", [str(JAVA / "java"), "-version"])
-    rust_version = run.command("rustc-version", [env["CARGO_HOME"] + "/bin/rustc", "-Vv"], env=env)
+    rust_version = run.command("rustc-version", [tool("rustc", env), "-Vv"], env=env)
     commit = run.command("ghidra-commit", ["git", "-C", str(GHIDRA), "rev-parse", "HEAD"])
     programs = {"java": [str(JAVA / "java"), "-Xms64m", "-Xmx256m", "-cp",
                           str(classes) + os.pathsep + classpath, "ElfProgramHeadersBench"],
@@ -197,7 +195,7 @@ def source_snapshot(directory: Path) -> dict[str, str]:
              GHIDRA / "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeader.java"]
     hashes = {}
     for path in paths:
-        relative = path.relative_to("/workspace")
+        relative = snapshot_path(path)
         target = directory / "source-snapshot" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
