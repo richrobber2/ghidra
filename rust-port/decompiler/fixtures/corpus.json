@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "scope": "x86-64 little-endian ELF; bounded six-u64 scalar leaf functions; validation rather than performance",
+  "prerun_correction": "The mid-instruction fixture uses JZ rather than JMP so both overlapping instruction streams are reachable; an unconditional alternate entry is not inherently malformed on x86.",
+  "optimization_levels": ["O0", "O2", "O3"],
+  "cflags": ["-std=c11", "-fPIC", "-shared", "-nostdlib", "-fno-stack-protector", "-fno-asynchronous-unwind-tables", "-fno-unwind-tables", "-fno-tree-vectorize", "-fno-tree-slp-vectorize", "-fcf-protection=none", "-Wl,--build-id=none"],
+  "supported": ["add_mix", "sub_borrow", "bit_logic", "shifts64", "rotate64", "multiply64", "select_unsigned", "select_signed", "minmax_u32", "signed32_branch", "loop_accumulate", "loop_xor", "stack_spill", "zero_extend32"],
+  "must_reject": ["unsupported_call", "unsupported_simd", "unsupported_indirect", "malformed_truncated", "malformed_outside", "malformed_mid_instruction"],
+  "input_seed": 936438313,
+  "random_input_count": 256,
+  "child_timeout_seconds": 5
+}

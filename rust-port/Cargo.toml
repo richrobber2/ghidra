@@ -1,0 +1,25 @@
+[package]
+name = "ghidra-elf"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-guided, allocation-free Ghidra ELF header parser"
+
+[lib]
+name = "ghidra_elf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ghidra-elf"
+path = "src/main.rs"
+
+[[bin]]
+name = "header-bench"
+path = "bench/header_bench.rs"
+
+[profile.max]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+

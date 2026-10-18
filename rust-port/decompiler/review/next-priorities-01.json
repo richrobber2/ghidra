@@ -1,0 +1,408 @@
+{
+  "source_manifest": "/workspace/ghidra-rust-port/decompiler/results/real-zlib-01/decompilations/library-batch/manifest.json",
+  "source_sha256": "cd94577c4c13a1d85a83292656fed5534b7619efd638e3de04caaa75b3ace612",
+  "inventory": 88,
+  "guarded_artifacts": 3,
+  "first_rejections": 85,
+  "groups": {
+    "unmodeled instruction Mul": {
+      "count": 4,
+      "cases": [
+        {
+          "function": "adler32_z",
+          "first_error": "unsupported function at 0x3769: unmodeled instruction Mul"
+        },
+        {
+          "function": "crc32_z",
+          "first_error": "unsupported function at 0x47cd: unmodeled instruction Mul"
+        },
+        {
+          "function": "gzfread",
+          "first_error": "unsupported function at 0x14cc0: unmodeled instruction Mul"
+        },
+        {
+          "function": "gzfwrite",
+          "first_error": "unsupported function at 0x157b5: unmodeled instruction Mul"
+        }
+      ]
+    },
+    "out-of-range direct control flow": {
+      "count": 14,
+      "cases": [
+        {
+          "function": "adler32",
+          "first_error": "unsupported function at 0x3320: control flow leaves the bounded function"
+        },
+        {
+          "function": "crc32",
+          "first_error": "unsupported function at 0x3030: control flow leaves the bounded function"
+        },
+        {
+          "function": "crc32_combine",
+          "first_error": "unsupported function at 0x30d0: control flow leaves the bounded function"
+        },
+        {
+          "function": "crc32_combine_gen",
+          "first_error": "unsupported function at 0x30c0: control flow leaves the bounded function"
+        },
+        {
+          "function": "inflateReset",
+          "first_error": "unsupported function at 0x3100: control flow leaves the bounded function"
+        },
+        {
+          "function": "inflateInit_",
+          "first_error": "unsupported function at 0x32c0: control flow leaves the bounded function"
+        },
+        {
+          "function": "compress",
+          "first_error": "unsupported function at 0x32a0: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzclose",
+          "first_error": "unsupported function at 0x30a0: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzopen",
+          "first_error": "unsupported function at 0x138e0: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzopen64",
+          "first_error": "unsupported function at 0x138e0: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzseek",
+          "first_error": "unsupported function at 0x3060: control flow leaves the bounded function"
+        },
+        {
+          "function": "gztell",
+          "first_error": "unsupported function at 0x3180: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzoffset",
+          "first_error": "unsupported function at 0x3270: control flow leaves the bounded function"
+        },
+        {
+          "function": "gzgetc_",
+          "first_error": "unsupported function at 0x30b0: control flow leaves the bounded function"
+        }
+      ]
+    },
+    "implicit double-width IMUL is not modeled": {
+      "count": 2,
+      "cases": [
+        {
+          "function": "adler32_combine",
+          "first_error": "unsupported function at 0x3b19: implicit double-width IMUL is not modeled"
+        },
+        {
+          "function": "adler32_combine64",
+          "first_error": "unsupported function at 0x3c09: implicit double-width IMUL is not modeled"
+        }
+      ]
+    },
+    "RIP-relative/global addresses": {
+      "count": 5,
+      "cases": [
+        {
+          "function": "get_crc_table",
+          "first_error": "RIP-relative addresses require relocation/global-memory support"
+        },
+        {
+          "function": "crc32_combine64",
+          "first_error": "RIP-relative addresses require relocation/global-memory support"
+        },
+        {
+          "function": "crc32_combine_gen64",
+          "first_error": "RIP-relative addresses require relocation/global-memory support"
+        },
+        {
+          "function": "zlibVersion",
+          "first_error": "RIP-relative addresses require relocation/global-memory support"
+        },
+        {
+          "function": "zError",
+          "first_error": "RIP-relative addresses require relocation/global-memory support"
+        }
+      ]
+    },
+    "unmodeled instruction Bt": {
+      "count": 11,
+      "cases": [
+        {
+          "function": "deflateSetDictionary",
+          "first_error": "unsupported function at 0x68e7: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateGetDictionary",
+          "first_error": "unsupported function at 0x6c07: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateResetKeep",
+          "first_error": "unsupported function at 0x6cf0: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateSetHeader",
+          "first_error": "unsupported function at 0x6eee: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflatePending",
+          "first_error": "unsupported function at 0x6f6e: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflatePrime",
+          "first_error": "unsupported function at 0x7027: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateTune",
+          "first_error": "unsupported function at 0x7141: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateBound",
+          "first_error": "unsupported function at 0x7231: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflate",
+          "first_error": "unsupported function at 0x73e9: unmodeled instruction Bt"
+        },
+        {
+          "function": "deflateParams",
+          "first_error": "unsupported function at 0x8b0b: unmodeled instruction Bt"
+        },
+        {
+          "function": "inflateReset2",
+          "first_error": "unsupported function at 0xc791: unmodeled instruction Bt"
+        }
+      ]
+    },
+    "calls": {
+      "count": 28,
+      "cases": [
+        {
+          "function": "deflateReset",
+          "first_error": "unsupported function at 0x6dbd: unmodeled instruction Call"
+        },
+        {
+          "function": "deflateEnd",
+          "first_error": "unsupported function at 0x8fcf: unmodeled instruction Call"
+        },
+        {
+          "function": "deflateInit2_",
+          "first_error": "unsupported function at 0x9189: unmodeled instruction Call"
+        },
+        {
+          "function": "deflateInit_",
+          "first_error": "unsupported function at 0x93bd: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateBackInit_",
+          "first_error": "unsupported function at 0x96d0: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateBackEnd",
+          "first_error": "unsupported function at 0xaf63: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateInit2_",
+          "first_error": "unsupported function at 0xc838: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateEnd",
+          "first_error": "unsupported function at 0xf0be: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateGetDictionary",
+          "first_error": "unsupported function at 0xf17c: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateSetDictionary",
+          "first_error": "unsupported function at 0xf219: unmodeled instruction Call"
+        },
+        {
+          "function": "inflateCopy",
+          "first_error": "unsupported function at 0xf75a: unmodeled instruction Call"
+        },
+        {
+          "function": "uncompress",
+          "first_error": "unsupported function at 0x138a2: unmodeled instruction Call"
+        },
+        {
+          "function": "gzdopen",
+          "first_error": "unsupported function at 0x13cb7: unmodeled instruction Call"
+        },
+        {
+          "function": "gzrewind",
+          "first_error": "unsupported function at 0x13da7: unmodeled instruction Call"
+        },
+        {
+          "function": "gzseek64",
+          "first_error": "unsupported function at 0x13f48: unmodeled instruction Call"
+        },
+        {
+          "function": "gzoffset64",
+          "first_error": "unsupported function at 0x14078: unmodeled instruction Call"
+        },
+        {
+          "function": "gzclearerr",
+          "first_error": "unsupported function at 0x14190: unmodeled instruction Call"
+        },
+        {
+          "function": "gzread",
+          "first_error": "unsupported function at 0x14c3b: unmodeled instruction Call"
+        },
+        {
+          "function": "gzungetc",
+          "first_error": "unsupported function at 0x14eb5: unmodeled instruction Call"
+        },
+        {
+          "function": "gzgets",
+          "first_error": "unsupported function at 0x15036: unmodeled instruction Call"
+        },
+        {
+          "function": "gzdirect",
+          "first_error": "unsupported function at 0x150e6: unmodeled instruction Call"
+        },
+        {
+          "function": "gzclose_r",
+          "first_error": "unsupported function at 0x15187: unmodeled instruction Call"
+        },
+        {
+          "function": "gzwrite",
+          "first_error": "unsupported function at 0x15763: unmodeled instruction Call"
+        },
+        {
+          "function": "gzputs",
+          "first_error": "unsupported function at 0x159bc: unmodeled instruction Call"
+        },
+        {
+          "function": "gzvprintf",
+          "first_error": "unsupported function at 0x15b23: unmodeled instruction Call"
+        },
+        {
+          "function": "gzflush",
+          "first_error": "unsupported function at 0x15dc6: unmodeled instruction Call"
+        },
+        {
+          "function": "gzsetparams",
+          "first_error": "unsupported function at 0x15f65: unmodeled instruction Call"
+        },
+        {
+          "function": "gzclose_w",
+          "first_error": "unsupported function at 0x15fd9: unmodeled instruction Call"
+        }
+      ]
+    },
+    "unmodeled instruction Movdqu": {
+      "count": 1,
+      "cases": [
+        {
+          "function": "deflateCopy",
+          "first_error": "unsupported function at 0x9459: unmodeled instruction Movdqu"
+        }
+      ]
+    },
+    "unmodeled instruction Movq": {
+      "count": 2,
+      "cases": [
+        {
+          "function": "inflateBack",
+          "first_error": "unsupported function at 0x9775: unmodeled instruction Movq"
+        },
+        {
+          "function": "inflateResetKeep",
+          "first_error": "unsupported function at 0xc656: unmodeled instruction Movq"
+        }
+      ]
+    },
+    "external/pointer memory": {
+      "count": 11,
+      "cases": [
+        {
+          "function": "inflatePrime",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateGetHeader",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateSyncPoint",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateUndermine",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateValidate",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateMark",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "inflateCodesUsed",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "gzbuffer",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "gztell64",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "gzeof",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        },
+        {
+          "function": "gzerror",
+          "first_error": "memory requires a stack/frame-pointer base; external memory is unsupported"
+        }
+      ]
+    },
+    "segment overrides are outside the flat SysV model": {
+      "count": 6,
+      "cases": [
+        {
+          "function": "inflate",
+          "first_error": "unsupported function at 0xc9b6: segment overrides are outside the flat SysV model"
+        },
+        {
+          "function": "inflateSync",
+          "first_error": "unsupported function at 0xf330: segment overrides are outside the flat SysV model"
+        },
+        {
+          "function": "uncompress2",
+          "first_error": "unsupported function at 0x136c3: segment overrides are outside the flat SysV model"
+        },
+        {
+          "function": "gzgetc",
+          "first_error": "unsupported function at 0x14d08: segment overrides are outside the flat SysV model"
+        },
+        {
+          "function": "gzputc",
+          "first_error": "unsupported function at 0x15810: segment overrides are outside the flat SysV model"
+        },
+        {
+          "function": "gzprintf",
+          "first_error": "unsupported function at 0x15c9a: segment overrides are outside the flat SysV model"
+        }
+      ]
+    },
+    "unmodeled instruction Pxor": {
+      "count": 1,
+      "cases": [
+        {
+          "function": "compress2",
+          "first_error": "unsupported function at 0x13526: unmodeled instruction Pxor"
+        }
+      ]
+    }
+  },
+  "interpretation": "First rejection only, not all blockers or predicted coverage gain. Out-of-range branches have not been established as tail calls.",
+  "selected_next_slice": "Read-only file-backed image memory with explicit pointer provenance; calls follow a usable memory/prototype model.",
+  "user_direction": "Does not have to be exact if it is better.",
+  "performance_claim": null
+}

@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+component_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+binary="$component_dir/target/release/rust-ghidra"
+if [[ ! -x "$binary" ]]; then
+    echo "Build first: $component_dir/build.sh" >&2
+    exit 2
+fi
+exec "$binary" "$@"

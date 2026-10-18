@@ -1,0 +1,873 @@
+{
+  "source_commit": "9a723ce99952771b8368329503aa589ae233e916",
+  "scope": "Base ELF package plus loader and byte-reader entry points; explicit imports only, not a complete dependency graph",
+  "files": [
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/BinaryReader.java",
+      "lines": 1345,
+      "sha256": "0821e053a862f18bf7895f2298ffc02ee5809310d8c5faf74af03afb562c3d10",
+      "explicit_imports": [
+        "java.io.*",
+        "java.nio.charset.Charset",
+        "java.nio.charset.StandardCharsets",
+        "ghidra.util.*"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/ByteArrayProvider.java",
+      "lines": 141,
+      "sha256": "10be367f5338e41810f7ef64620e5e81c243b3612d62ffe2d18f78e51a89bf6c",
+      "explicit_imports": [
+        "java.io.*",
+        "ghidra.formats.gfilesystem.FSRL"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/ByteProvider.java",
+      "lines": 160,
+      "sha256": "fbc6d7b04862e9107e0308c53b9baa851720c442cf115696bdeef476b888a910",
+      "explicit_imports": [
+        "java.io.*",
+        "ghidra.formats.gfilesystem.FSRL",
+        "ghidra.formats.gfilesystem.FileSystemService"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/UnlimitedByteProviderWrapper.java",
+      "lines": 117,
+      "sha256": "9c3e67d5a452b56cea1ac4ecdb8d1f5f721888fe96518b1aceb6e161ff737b2f",
+      "explicit_imports": [
+        "java.io.IOException",
+        "ghidra.formats.gfilesystem.FSRL"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/AndroidElfRelocationData.java",
+      "lines": 77,
+      "sha256": "5f6954f198564447324a9aef447d0783b801ef241091029b30a4559ccca6b2cd",
+      "explicit_imports": [
+        "javax.help.UnsupportedOperationException",
+        "ghidra.docking.settings.Settings",
+        "ghidra.docking.settings.SettingsDefinition",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/AndroidElfRelocationGroup.java",
+      "lines": 197,
+      "sha256": "556ae1a6af2c4c433fc10acb72f76e27dfb10216b3c6265ce6171d921f892ffe",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.ArrayList",
+        "javax.help.UnsupportedOperationException",
+        "ghidra.app.util.bin.*",
+        "ghidra.docking.settings.Settings",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.mem.MemBuffer",
+        "ghidra.program.model.mem.WrappedMemBuffer",
+        "ghidra.program.model.scalar.Scalar"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/AndroidElfRelocationOffset.java",
+      "lines": 145,
+      "sha256": "115dba3ee9ace58df8de2805813d494c28ff862f80b6065035965584e97f3474",
+      "explicit_imports": [
+        "javax.help.UnsupportedOperationException",
+        "ghidra.app.util.opinion.ElfLoader",
+        "ghidra.docking.settings.Settings",
+        "ghidra.docking.settings.SettingsDefinition",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.address.AddressSpace",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.mem.MemBuffer",
+        "ghidra.program.model.mem.Memory",
+        "ghidra.program.model.scalar.Scalar"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/AndroidElfRelocationTableDataType.java",
+      "lines": 147,
+      "sha256": "d7d555be4f317cd88f921ec28b02e3f5f22af81ed53e1f29633e99e3bf4b3aaa",
+      "explicit_imports": [
+        "java.util.ArrayList",
+        "java.io.IOException",
+        "ghidra.app.util.bin.*",
+        "ghidra.docking.settings.Settings",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.mem.MemBuffer",
+        "ghidra.program.model.mem.WrappedMemBuffer",
+        "ghidra.util.Msg"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfCompressedSectionHeader.java",
+      "lines": 123,
+      "sha256": "dd1c1393e209ba10667e1e4d714b5b58fd7a3f61a3f7e035c199ad9503cabef9",
+      "explicit_imports": [
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfConstants.java",
+      "lines": 575,
+      "sha256": "ddb4c54344541f3e26771be6538c5325423f2a6ae0a818280839883190ec2731",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDefaultGotPltMarkup.java",
+      "lines": 690,
+      "sha256": "f8a74c31203e1a539653011a5389020419f8c5e68ae22b660d936de30fa0d66e",
+      "explicit_imports": [
+        "java.util.*",
+        "ghidra.app.cmd.refs.RemoveReferenceCmd",
+        "ghidra.app.util.PseudoDisassembler",
+        "ghidra.program.disassemble.Disassembler",
+        "ghidra.program.model.address.*",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.mem.Memory",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.program.model.symbol.*",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.exception.*",
+        "ghidra.util.task.TaskMonitor"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamic.java",
+      "lines": 154,
+      "sha256": "60611f2b0ba82ca4d825108285eec1b752e10fe776aa794af23e8671053e82ff",
+      "explicit_imports": [
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.util.StringUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamicTable.java",
+      "lines": 231,
+      "sha256": "17eb8fd066e6f54ad63d2ec72876292a0981ef3d12a50e52c68bd87ff1ea892d",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.*",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.data.*",
+        "ghidra.util.exception.DuplicateNameException",
+        "ghidra.util.exception.NotFoundException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamicType.java",
+      "lines": 294,
+      "sha256": "44992b71fc89322872d722102d7ce062f2cb38f5baec3519e5d0896e29491c18",
+      "explicit_imports": [
+        "java.util.HashMap",
+        "java.util.Map",
+        "ghidra.util.Msg",
+        "ghidra.util.StringUtilities",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfException.java",
+      "lines": 41,
+      "sha256": "04a5fb6eff5bd0bfe20911a35684b74c97b6ced9f028d17fc49fce99b1b33623",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfFileSection.java",
+      "lines": 48,
+      "sha256": "813bc2a3c79277d429442b75c1e27f1d7653b4721400f89e89aca0791b35a254",
+      "explicit_imports": [
+        "ghidra.app.util.bin.StructConverter"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfHeader.java",
+      "lines": 2000,
+      "sha256": "07977505cb2591eb4f47ec0d5eaa7c0aa6eaf1c26736e0d8103c050b7a508b0c",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.*",
+        "java.util.function.Consumer",
+        "ghidra.app.util.bin.*",
+        "ghidra.app.util.bin.format.elf.ElfRelocationTable.TableFormat",
+        "ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory",
+        "ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter",
+        "ghidra.program.model.data.*",
+        "ghidra.util.Msg",
+        "ghidra.util.exception.AssertException",
+        "ghidra.util.exception.NotFoundException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfLoadHelper.java",
+      "lines": 240,
+      "sha256": "b62d1af64669cef036d25ed64667a2d5bdaee9fe541148ef5d0244367c6fd968",
+      "explicit_imports": [
+        "ghidra.app.util.bin.format.MemoryLoadable",
+        "ghidra.app.util.importer.MessageLog",
+        "ghidra.app.util.opinion.AbstractProgramLoader",
+        "ghidra.app.util.opinion.ElfLoaderOptionsFactory",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.address.AddressRange",
+        "ghidra.program.model.data.DataType",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.program.model.reloc.Relocation.Status",
+        "ghidra.program.model.symbol.Namespace",
+        "ghidra.program.model.symbol.Symbol",
+        "ghidra.util.exception.InvalidInputException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeader.java",
+      "lines": 461,
+      "sha256": "f349366b2326562feb8a16755a35505a4175578cc4175b6bed0739b4f8fcbd3a",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.io.InputStream",
+        "java.util.HashMap",
+        "java.util.Objects",
+        "java.util.function.BiConsumer",
+        "ghidra.app.util.bin.*",
+        "ghidra.app.util.bin.format.MemoryLoadable",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.util.StringUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeaderConstants.java",
+      "lines": 68,
+      "sha256": "acfc62a97169692d037bfb29b6b0012a46aa655dafec861c555237ed0f259d55",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeaderType.java",
+      "lines": 134,
+      "sha256": "fbbd8dc3c71ca5addbe4b7f0efdae78e02b86c4f8d582e9cde9523dc005067ae",
+      "explicit_imports": [
+        "java.util.HashMap",
+        "java.util.Map",
+        "ghidra.program.model.data.CategoryPath",
+        "ghidra.program.model.data.EnumDataType",
+        "ghidra.util.StringUtilities",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocation.java",
+      "lines": 373,
+      "sha256": "cd17a9dc4ef0f532824e0f027bd9eaaf0482c5bd12d6399f036e84c9ff5299bf",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.lang.reflect.Constructor",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter",
+        "ghidra.app.util.bin.format.elf.relocation.ElfRelocationContext",
+        "ghidra.app.util.bin.format.elf.relocation.AbstractElfRelocationHandler",
+        "ghidra.program.model.data.*"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocationTable.java",
+      "lines": 358,
+      "sha256": "ff87bab0c57e2cad8f51584e70e682bff21b6dd2e0698a8797b34f5d7406951d",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.ArrayList",
+        "java.util.List",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.data.*",
+        "ghidra.util.Msg"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelrRelocationTableDataType.java",
+      "lines": 117,
+      "sha256": "2f89748728a00f1a5db16400b4289acf55adf637b0e4005c906a3d7a4f317e13",
+      "explicit_imports": [
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.mem.MemBuffer",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeader.java",
+      "lines": 579,
+      "sha256": "63dcba63077981371355913bb2017056fb2437c6e1c5b7922ddf08ef64fda71c",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.io.InputStream",
+        "java.util.HashMap",
+        "java.util.Objects",
+        "java.util.function.BiConsumer",
+        "java.util.zip.InflaterInputStream",
+        "ghidra.app.util.bin.*",
+        "ghidra.app.util.bin.format.MemoryLoadable",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.util.Msg",
+        "ghidra.util.StringUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeaderConstants.java",
+      "lines": 192,
+      "sha256": "fb9ae7bc67c98da5114a0cb9e4dd2dc310cbceaecca3637fbb7f8181d14b0775",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeaderType.java",
+      "lines": 170,
+      "sha256": "d2c7bd638cdc00624540775922c51fa47ce2d1d6ecb50574c1c502583181d83d",
+      "explicit_imports": [
+        "java.util.HashMap",
+        "java.util.Map",
+        "ghidra.program.model.data.CategoryPath",
+        "ghidra.program.model.data.EnumDataType",
+        "ghidra.util.StringUtilities",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfStringTable.java",
+      "lines": 109,
+      "sha256": "cb9481e50066b64c5c998a742fcb3fb2dcdb52c09bffde1590b4f1d26e8df867",
+      "explicit_imports": [
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.data.DataType",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbol.java",
+      "lines": 547,
+      "sha256": "efa77781770701fc159ac06681dfb5f6e357ca03654899f8ac9526a206b5204c",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.regex.Matcher",
+        "java.util.regex.Pattern",
+        "org.apache.commons.lang3.StringUtils",
+        "ghidra.app.util.bin.BinaryReader"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolNameUtils.java",
+      "lines": 60,
+      "sha256": "dc01672f4a307eea0a46ff369915877080d6f7947c200e64a5043cc529344b7c",
+      "explicit_imports": [
+        "ghidra.program.model.symbol.SymbolUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolTable.java",
+      "lines": 321,
+      "sha256": "362cb819a386654443b980aad1e65cc2b1ffc7831254976438ccce723d8343ff",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.ArrayList",
+        "java.util.List",
+        "java.util.stream.Collectors",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.data.*",
+        "ghidra.util.exception.DuplicateNameException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/GnuConstants.java",
+      "lines": 35,
+      "sha256": "b4a71d05afb8fa99872e6ed8409c78134d5409150e066c0e09d7be824d2ff032",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/GnuVerdaux.java",
+      "lines": 67,
+      "sha256": "c383f271e68a6bb274da653948a546aa22cdfa89dc7edfe5304c74c221766df6",
+      "explicit_imports": [
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.program.model.data.DataType",
+        "ghidra.program.model.data.StructureDataType",
+        "ghidra.util.exception.DuplicateNameException",
+        "java.io.IOException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/GnuVerdef.java",
+      "lines": 108,
+      "sha256": "a660e64015970fc053a6b9a8fe6a18e4153ff2c372d811b9359ac6ec1ce2ba0f",
+      "explicit_imports": [
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.program.model.data.DataType",
+        "ghidra.program.model.data.StructureDataType",
+        "ghidra.util.exception.DuplicateNameException",
+        "java.io.IOException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/GnuVernaux.java",
+      "lines": 91,
+      "sha256": "23ecf42d83b7cbbea0457d4af84c473a6e779c349f57d51645129e2dc1f6c329",
+      "explicit_imports": [
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.program.model.data.DataType",
+        "ghidra.program.model.data.StructureDataType",
+        "ghidra.util.exception.DuplicateNameException",
+        "java.io.IOException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/GnuVerneed.java",
+      "lines": 91,
+      "sha256": "908be56f610f8231761050b3027c50b60bcea319ff80b1c088c5b55948251b3a",
+      "explicit_imports": [
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.program.model.data.DataType",
+        "ghidra.program.model.data.StructureDataType",
+        "ghidra.util.exception.DuplicateNameException",
+        "java.io.IOException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/extend/ElfExtension.java",
+      "lines": 33,
+      "sha256": "6d8db34716d6a3a9bdd7cbf0b0939cb0b06ec7a944daeedf5e4adfe947061906",
+      "explicit_imports": [
+        "ghidra.app.util.bin.format.elf.ElfHeader",
+        "ghidra.app.util.bin.format.elf.ElfLoadHelper",
+        "ghidra.util.classfinder.ExtensionPoint"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/extend/ElfExtensionFactory.java",
+      "lines": 38,
+      "sha256": "d0fcc144f8983fb40c6683d510c3829c0f575510995f862be58f769c7cf63961",
+      "explicit_imports": [
+        "java.util.ArrayList",
+        "java.util.List",
+        "ghidra.app.util.bin.format.elf.ElfHeader",
+        "ghidra.util.classfinder.ClassSearcher"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/extend/ElfLoadAdapter.java",
+      "lines": 569,
+      "sha256": "3641bee17ab7d1800a4265023422b536470fce6fe4a20fcea7fdfc1acb90d7a8",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.io.InputStream",
+        "java.lang.reflect.Field",
+        "java.lang.reflect.Modifier",
+        "java.util.*",
+        "ghidra.app.util.Option",
+        "ghidra.app.util.bin.format.MemoryLoadable",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.opinion.ElfLoaderOptionsFactory",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.address.AddressSpace",
+        "ghidra.program.model.listing.Program",
+        "ghidra.util.Msg",
+        "ghidra.util.exception.*",
+        "ghidra.util.task.TaskMonitor"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/ElfComment.java",
+      "lines": 122,
+      "sha256": "41528abe237c3c908ce3edd83697c0256343044da9ee866368c1f9bd109360e6",
+      "explicit_imports": [
+        "java.util.ArrayList",
+        "java.util.List",
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.framework.options.Options",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.DataUtilities",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.data.StringUTF8DataType",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.symbol.SourceType",
+        "ghidra.program.model.symbol.SymbolTable",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.exception.InvalidInputException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/ElfInfoItem.java",
+      "lines": 95,
+      "sha256": "fe82d4f00e2f6fc48d1d849299b6a97ca616a32477cb5682212149501b2180e3",
+      "explicit_imports": [
+        "java.io.IOException",
+        "ghidra.app.util.bin.*",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.util.Msg"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/ElfInfoProducer.java",
+      "lines": 64,
+      "sha256": "fa3982c3f8891125aca3969cb48d6465fbb8ca1f53c874a30d854b289590e1d6",
+      "explicit_imports": [
+        "java.util.List",
+        "ghidra.app.util.bin.format.elf.ElfLoadHelper",
+        "ghidra.util.classfinder.ClassSearcher",
+        "ghidra.util.classfinder.ExtensionPoint",
+        "ghidra.util.exception.CancelledException",
+        "ghidra.util.task.TaskMonitor"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/ElfNote.java",
+      "lines": 291,
+      "sha256": "ec55f36bf86f06e6f7c49e94c8c7481e83f6dff046352f544471415e52e195ee",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.*",
+        "java.io.IOException",
+        "ghidra.app.util.bin.*",
+        "ghidra.framework.options.Options",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.NumericUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/GnuBuildAttribute.java",
+      "lines": 438,
+      "sha256": "471d3d580a8e7cdbbc2501412fd5ef883acec8add50fc6f7355018631b0c5870",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.*",
+        "java.io.IOException",
+        "java.util.Objects",
+        "ghidra.app.cmd.comments.AppendCommentCmd",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.ByteArrayProvider",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.symbol.*",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.exception.InvalidInputException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/GnuBuildAttributes.java",
+      "lines": 122,
+      "sha256": "1c4639cd80e7992aec3c867a2e501b477db2b7acff2d21f6ed43aff673bdf5f2",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.ArrayList",
+        "java.util.List",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.format.elf.info.GnuBuildAttribute.AddressPair",
+        "ghidra.app.util.bin.format.elf.info.GnuBuildAttribute.AttributeType",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.listing.CommentType",
+        "ghidra.program.model.listing.Program",
+        "ghidra.util.Msg"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/GnuDebugAltLink.java",
+      "lines": 141,
+      "sha256": "8d670d846f934ac20c35dfbe7586433a1a5c321790528fdecfb94b58028b8397",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.*",
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.NumericUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/GnuDebugLink.java",
+      "lines": 131,
+      "sha256": "c0803b89cd639945c6d83a896bad21b3affd2ad8f775ef09f33b2361cc7da849",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.DWORD",
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/NoteAbiTag.java",
+      "lines": 114,
+      "sha256": "7d9276ca30d6c2eafcd66b17a9bfbb59200f594b74faf7d23b417dd1c9334b9e",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.DWORD",
+        "java.io.IOException",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.listing.Program"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/NoteGnuBuildId.java",
+      "lines": 80,
+      "sha256": "1bdaa6469698240347290cb4aa4d73aabb2e39c7b4d1ba99b105f16bc548b90e",
+      "explicit_imports": [
+        "static ghidra.app.util.bin.StructConverter.BYTE",
+        "java.io.IOException",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.listing.Program"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/NoteGnuProperty.java",
+      "lines": 220,
+      "sha256": "ae460b1c482427c7dfd80155cf20c96213b0978da90da35e031a50fa2dc3cbbb",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.ArrayList",
+        "java.util.List",
+        "ghidra.app.util.bin.BinaryReader",
+        "ghidra.app.util.bin.StructConverter",
+        "ghidra.framework.options.Options",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.NumericUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/info/StandardElfInfoProducer.java",
+      "lines": 160,
+      "sha256": "0ccca592e304ab492821a7cc71523343876540a17d0d26309de4396f425f2736",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.Map",
+        "java.util.Map.Entry",
+        "ghidra.app.util.bin.*",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.bin.format.elf.info.ElfInfoItem.ReaderFunc",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.address.AddressOutOfBoundsException",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.listing.CommentType",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.mem.Memory",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.classfinder.ExtensionPointProperties",
+        "ghidra.util.exception.CancelledException",
+        "ghidra.util.task.TaskMonitor"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/AbstractElfRelocationHandler.java",
+      "lines": 295,
+      "sha256": "f91fb726b7e56a1495fce08e3cf564b0d62cf7708471c33131af025aec95bfba",
+      "explicit_imports": [
+        "java.util.HashMap",
+        "java.util.Map",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.importer.MessageLog",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.listing.BookmarkType",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.program.model.reloc.RelocationResult",
+        "ghidra.util.classfinder.ClassSearcher"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfGotRelocationContext.java",
+      "lines": 294,
+      "sha256": "8ad2422970bd78bf3a26a46b9dbb49a059043285484b24ab3ac83ac7e37b2907",
+      "explicit_imports": [
+        "java.util.*",
+        "ghidra.app.util.MemoryBlockUtils",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.program.model.address.*",
+        "ghidra.program.model.data.PointerDataType",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.util.*",
+        "ghidra.util.exception.InvalidInputException",
+        "ghidra.util.exception.NotFoundException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationContext.java",
+      "lines": 351,
+      "sha256": "2430112c39273075dd96fd1fc55bdbfa3705b923ad55a7cc54d8bd66228d3e6f",
+      "explicit_imports": [
+        "java.util.Map",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter",
+        "ghidra.app.util.importer.MessageLog",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.program.model.reloc.RelocationResult",
+        "ghidra.util.exception.*"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationHandler.java",
+      "lines": 443,
+      "sha256": "bc744ce00841bd6cb53a4165c07138d92f71a08ff551f4ccece3c842b5320491",
+      "explicit_imports": [
+        "java.util.Map",
+        "org.apache.commons.lang3.StringUtils",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.importer.MessageLog",
+        "ghidra.program.model.address.Address",
+        "ghidra.program.model.data.DataUtilities",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.data.PointerTypedef",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.mem.MemoryAccessException",
+        "ghidra.program.model.mem.MemoryBlock",
+        "ghidra.program.model.reloc.RelocationResult",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.Msg",
+        "ghidra.util.classfinder.ClassSearcher",
+        "ghidra.util.classfinder.ExtensionPoint",
+        "ghidra.util.exception.NotFoundException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationHandlerFactory.java",
+      "lines": 39,
+      "sha256": "31dacdc66eea8f5bb9e474f78209fee6d779ccb5aa536e3059a56a5d29a16485",
+      "explicit_imports": [
+        "java.util.ArrayList",
+        "java.util.List",
+        "ghidra.app.util.bin.format.elf.ElfHeader",
+        "ghidra.util.classfinder.ClassSearcher"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationType.java",
+      "lines": 32,
+      "sha256": "f2d7d9ba2c0f5d036c23fef784c0c4be952409bdb84f6a8a9ebc961527d1ecd6",
+      "explicit_imports": []
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfLoader.java",
+      "lines": 218,
+      "sha256": "db0eb4e923875be6c155fdc946a32117d85e7b42edb224b48069240df15b67c2",
+      "explicit_imports": [
+        "java.io.IOException",
+        "java.util.*",
+        "ghidra.app.util.Option",
+        "ghidra.app.util.bin.ByteProvider",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.bin.format.golang.GoConstants",
+        "ghidra.app.util.bin.format.golang.rtti.GoRttiMapper",
+        "ghidra.framework.model.DomainObject",
+        "ghidra.framework.model.ProjectData",
+        "ghidra.framework.options.Options",
+        "ghidra.program.model.lang.Endian",
+        "ghidra.program.model.listing.Program",
+        "ghidra.program.util.ExternalSymbolResolver",
+        "ghidra.util.Msg",
+        "ghidra.util.NumericUtilities",
+        "ghidra.util.exception.CancelledException"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfLoaderOptionsFactory.java",
+      "lines": 277,
+      "sha256": "d297badff9427e39af376afd19b2cd8b40287a665f9c6b8047a25e9f20347e92",
+      "explicit_imports": [
+        "java.util.List",
+        "ghidra.app.util.Option",
+        "ghidra.app.util.OptionUtils",
+        "ghidra.app.util.bin.ByteProvider",
+        "ghidra.app.util.bin.format.elf.ElfException",
+        "ghidra.app.util.bin.format.elf.ElfHeader",
+        "ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory",
+        "ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter",
+        "ghidra.program.model.address.*",
+        "ghidra.program.model.lang.*",
+        "ghidra.util.NumericUtilities",
+        "ghidra.util.StringUtilities"
+      ]
+    },
+    {
+      "path": "Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfProgramBuilder.java",
+      "lines": 3745,
+      "sha256": "1a1195c84c57adff8b57d18da8f2c5582a32a7892c4133fc3a78e1c01bd01351",
+      "explicit_imports": [
+        "java.io.*",
+        "java.math.BigInteger",
+        "java.nio.file.AccessMode",
+        "java.text.NumberFormat",
+        "java.util.*",
+        "org.apache.commons.compress.compressors.xz.XZCompressorInputStream",
+        "org.apache.commons.lang3.StringUtils",
+        "ghidra.app.cmd.label.SetLabelPrimaryCmd",
+        "ghidra.app.util.*",
+        "ghidra.app.util.bin.*",
+        "ghidra.app.util.bin.format.MemoryLoadable",
+        "ghidra.app.util.bin.format.elf.*",
+        "ghidra.app.util.bin.format.elf.ElfDynamicType.ElfDynamicValueType",
+        "ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter",
+        "ghidra.app.util.bin.format.elf.info.ElfInfoProducer",
+        "ghidra.app.util.bin.format.elf.relocation.*",
+        "ghidra.app.util.importer.MessageLog",
+        "ghidra.framework.Application",
+        "ghidra.framework.options.Options",
+        "ghidra.framework.store.LockException",
+        "ghidra.program.database.mem.FileBytes",
+        "ghidra.program.database.register.AddressRangeObjectMap",
+        "ghidra.program.model.address.*",
+        "ghidra.program.model.data.*",
+        "ghidra.program.model.data.Array",
+        "ghidra.program.model.data.DataUtilities.ClearDataMode",
+        "ghidra.program.model.lang.Register",
+        "ghidra.program.model.listing.*",
+        "ghidra.program.model.mem.*",
+        "ghidra.program.model.reloc.*",
+        "ghidra.program.model.reloc.Relocation.Status",
+        "ghidra.program.model.scalar.Scalar",
+        "ghidra.program.model.symbol.*",
+        "ghidra.program.model.util.CodeUnitInsertionException",
+        "ghidra.util.*",
+        "ghidra.util.datastruct.*",
+        "ghidra.util.exception.*",
+        "ghidra.util.task.TaskMonitor",
+        "utilities.util.FileUtilities"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+[package]
+name = "rust-ghidra"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Standalone Rust x86-64 ELF decompiler prototype"
+
+[dependencies]
+ghidra-elf = { path = "..", version = "0.1.0" }
+ghidra-elf-segments = { path = "../program-headers", version = "0.1.0" }
+iced-x86 = { version = "=1.21.0", default-features = false, features = ["std", "decoder", "instr_info", "intel"] }
+
+[lib]
+name = "rust_ghidra"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rust-ghidra"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = false

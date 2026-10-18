@@ -1,0 +1,24 @@
+{
+  "commit": "9a723ce99952771b8368329503aa589ae233e916",
+  "pinned_reference_sha256": {
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfHeader.java": "07977505cb2591eb4f47ec0d5eaa7c0aa6eaf1c26736e0d8103c050b7a508b0c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeader.java": "f349366b2326562feb8a16755a35505a4175578cc4175b6bed0739b4f8fcbd3a",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/UnlimitedByteProviderWrapper.java": "9c3e67d5a452b56cea1ac4ecdb8d1f5f721888fe96518b1aceb6e161ff737b2f",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/BinaryReader.java": "0821e053a862f18bf7895f2298ffc02ee5809310d8c5faf74af03afb562c3d10",
+    "/workspace/ghidra-rust-port/Cargo.toml": "006b0b9a7e20bf8eed366b804ccaaabc936f089b41dd88e7fadb68f278c8c022",
+    "/workspace/ghidra-rust-port/src/lib.rs": "bec6868cbf0c22bf598a964420cb00eb9a13efeffbf1ecc5b7859c7565d15d86"
+  },
+  "boundary": {
+    "header": "ElfHeader(ByteProvider, Consumer<String>)",
+    "table": "ElfHeader.parseProgramHeaders()",
+    "record": "ElfProgramHeader(BinaryReader, ElfHeader)",
+    "addresses": "Raw p_vaddr/p_paddr fields; public getters can adjust for PRE trailers",
+    "excluded": [
+      "full ElfHeader.parse()",
+      "section tables",
+      "segment payload validation",
+      "architecture adapters",
+      "loader integration"
+    ]
+  }
+}

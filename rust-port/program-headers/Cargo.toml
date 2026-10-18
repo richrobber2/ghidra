@@ -1,0 +1,26 @@
+[package]
+name = "ghidra-elf-segments"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-guided Ghidra ELF program-header table parser"
+
+[dependencies]
+ghidra-elf = { path = "..", version = "0.1.0" }
+
+[lib]
+name = "ghidra_elf_segments"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ghidra-elf-segments"
+path = "src/main.rs"
+
+[[bin]]
+name = "segments-bench"
+path = "bench/segments_bench.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = false

@@ -1,0 +1,15 @@
+Rust decompiler prototype
+
+This component uses the source-guided Ghidra ELF header/program-header Rust
+components in the parent directories. Their Apache-2.0 licenses and Ghidra
+attribution notices apply to those components. Original Ghidra source remains
+unchanged and is used as an inspection reference, not a runtime dependency.
+
+Instruction decoding: iced-x86 1.21.0, MIT.
+Copyright (C) 2018-present iced project and contributors.
+https://github.com/icedland/iced
+
+Dependency: lazy_static 1.5.1, MIT OR Apache-2.0.
+The selected MIT license is retained under third-party-licenses.
+
+Exact registry checksums are pinned in Cargo.lock.

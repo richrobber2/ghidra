@@ -1,0 +1,21 @@
+Ghidra ELF header Rust port
+
+This source-guided port is derived from the Ghidra project's ELF header,
+section-zero and byte-reader behavior at commit
+9a723ce99952771b8368329503aa589ae233e916. Source provenance is recorded in
+source-map.json. The Rust implementation and local runners are new adaptations;
+they are not an official Ghidra release.
+
+Upstream Ghidra notice:
+
+Ghidra
+
+This product includes software developed at National Security Agency
+(https://www.nsa.gov)
+
+Portions of this product were created by the U.S. Government and not subject to
+U.S. copyright protections under 17 U.S.C.
+
+The remaining portions are copyright their respective authors and have been
+contributed under the terms of one or more open source licenses, and made
+available to you under the terms of those licenses. (See LICENSE)
