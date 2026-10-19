@@ -21,6 +21,12 @@ its UTF-8 replacement rules) and reproduces the compressed-section header probe,
 with original-Java differential tests over synthetic fixtures and real system
 binaries.
 
+The fourth slice, the [Rust string- and symbol-table parser](symbol-tables/README.md),
+decodes section-based `.symtab`/`.dynsym` tables with Ghidra's name lookup,
+warnings and extended section indices. Tables reachable only through the dynamic
+table are left for the dynamic-table slice. The decompiler now reads its section
+table through the section-header parser.
+
 A [standalone Rust decompiler prototype](decompiler/README.md) now uses these
 components to discover x86-64 ELF functions, lift scalar instructions/control
 flow and emit guarded executable C without Java or the original native engine.
@@ -152,8 +158,8 @@ recorded commit. It is not a complete transitive dependency graph.
 | Parse orchestration | `ElfHeader.java:290` | Later: program headers → sections → dynamic table → strings → library names → symbols → relocations. |
 | Program headers | `ElfProgramHeader.java:90`, `ElfHeader.java:1149` | Second slice; distinguish raw offsets from adjusted loader values. |
 | Section headers | `ElfSectionHeader.java:99`, `ElfHeader.java:1111` | Third slice, implemented in `section-headers/`: records, names and the compression-header probe; no decompression. |
-| String tables | `ElfStringTable.java:56` | Preserve raw bytes; specify name-decoding/recovery policy before matching Java string conversion. |
-| Symbols | `ElfSymbol.java:137`, `ElfSymbolTable.java:62`, `ElfHeader.java:850` | Later slice, following section/string support. ELF32/64 layouts differ. |
+| String tables | `ElfStringTable.java:56` | Implemented in `symbol-tables/` with Java's UTF-8 decoding and `trim()`. |
+| Symbols | `ElfSymbol.java:137`, `ElfSymbolTable.java:62`, `ElfHeader.java:850` | Fourth slice, implemented in `symbol-tables/` for section-based tables; dynamic-table fallback deferred. |
 | Dynamic metadata | `ElfHeader.java:692`, `:926`, `:1016` | Defer initially. Sectionless dynamic-symbol discovery needs segment/address translation and hash-table logic. |
 | Format detection/loading | `Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfLoader.java:116`, `:162` | Keep Java loader integration outside the first parser. |
 | Program construction | `Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfProgramBuilder.java` | Defer: depends on Program, memory, symbols, data types and monitor/log infrastructure. |
