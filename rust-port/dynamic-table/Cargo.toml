@@ -1,0 +1,25 @@
+[package]
+name = "ghidra-elf-dynamic"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-guided Ghidra ELF dynamic-table parser"
+
+[dependencies]
+ghidra-elf = { path = "..", version = "0.1.0" }
+ghidra-elf-segments = { path = "../program-headers", version = "0.1.0" }
+ghidra-elf-sections = { path = "../section-headers", version = "0.1.0" }
+ghidra-elf-symbols = { path = "../symbol-tables", version = "0.1.0" }
+
+[lib]
+name = "ghidra_elf_dynamic"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ghidra-elf-dynamic"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = false
