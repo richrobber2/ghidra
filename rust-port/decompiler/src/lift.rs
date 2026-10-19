@@ -7,7 +7,7 @@
 //! Overlap between two reachable instruction interpretations is unsupported.
 
 use iced_x86::{Decoder, DecoderOptions, Instruction as Decoded, Mnemonic, OpKind, Register};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt;
 
 pub const MAX_FUNCTION_BYTES: usize = 1024 * 1024;
@@ -214,16 +214,19 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         .checked_add(bytes.len() as u64)
         .ok_or_else(|| error(start, "function address extent overflow"))?;
     let mut work = VecDeque::from([start]);
-    let mut owners = vec![None; bytes.len()];
-    let mut instructions = BTreeMap::new();
+    // Offset of the owning instruction's first byte plus one; zero is unowned.
+    // MAX_FUNCTION_BYTES keeps every offset in range.
+    let mut owners = vec![0u32; bytes.len()];
+    let mut instructions = Vec::new();
+    let mut decoder = Decoder::with_ip(64, bytes, start, DecoderOptions::NONE);
     let mut saw_return = false;
     while let Some(address) = work.pop_front() {
         if address < start || address >= end {
             return Err(error(address, "control flow leaves the bounded function"));
         }
         let offset = (address - start) as usize;
-        if let Some(owner) = owners[offset] {
-            if owner != address {
+        if owners[offset] != 0 {
+            if owners[offset] as usize != offset + 1 {
                 return Err(error(
                     address,
                     "branch target enters the middle of an instruction",
@@ -234,7 +237,10 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         if instructions.len() >= MAX_INSTRUCTIONS {
             return Err(error(address, "reachable instruction limit exceeded"));
         }
-        let mut decoder = Decoder::with_ip(64, &bytes[offset..], address, DecoderOptions::NONE);
+        decoder
+            .set_position(offset)
+            .expect("offset is inside the function bytes");
+        decoder.set_ip(address);
         let decoded = decoder.decode();
         if decoded.is_invalid() || decoded.len() == 0 {
             return Err(error(address, "invalid or truncated x86-64 instruction"));
@@ -246,10 +252,10 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
             return Err(error(address, "instruction exceeds bounded function"));
         }
         for owner in &mut owners[offset..offset + decoded.len()] {
-            if owner.is_some() {
+            if *owner != 0 {
                 return Err(error(address, "overlapping instruction streams"));
             }
-            *owner = Some(address);
+            *owner = offset as u32 + 1;
         }
         // Architectural NOP never reads its encoded memory operand. Compilers
         // use ignored segment/address-size prefixes to construct alignment
@@ -272,22 +278,21 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
             }
             _ => work.push_back(next),
         }
-        instructions.insert(
+        instructions.push(Instruction {
             address,
-            Instruction {
-                address,
-                len: decoded.len() as u8,
-                op,
-            },
-        );
+            len: decoded.len() as u8,
+            op,
+        });
     }
     if !saw_return {
         return Err(error(start, "reachable CFG has no modeled return"));
     }
+    // Ownership checks decode each address at most once, so keys are unique.
+    instructions.sort_unstable_by_key(|instruction| instruction.address);
     Ok(LiftedFunction {
         start,
         end,
-        instructions: instructions.into_values().collect(),
+        instructions,
     })
 }
 

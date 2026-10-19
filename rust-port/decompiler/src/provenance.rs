@@ -9,7 +9,7 @@
 use crate::lift::{
     BinaryKind, LiftedFunction, MAX_INSTRUCTIONS, Memory, Op, Operand, RegView, UnaryKind,
 };
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
 pub const NUM: u8 = 1;
 pub const STACK: u8 = 2;
@@ -273,21 +273,35 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
     if count == 0 || count > MAX_INSTRUCTIONS {
         return Err("provenance instruction limit exceeded or empty CFG".into());
     }
-    let mut indices = BTreeMap::new();
-    for (index, instruction) in function.instructions.iter().enumerate() {
+    for instruction in &function.instructions {
         if instruction.address < function.start
             || instruction.address >= function.end
             || instruction.len == 0
             || !valid_op(&instruction.op)
-            || indices.insert(instruction.address, index).is_some()
         {
             return Err("invalid instruction in provenance CFG".into());
         }
     }
-    let entry = *indices
-        .get(&function.start)
-        .ok_or("provenance CFG has no entry instruction")?;
-    let mut successors = vec![Vec::new(); count];
+    // Sorted (address, index) pairs; lifted input is already in address order.
+    let mut indices: Vec<(u64, usize)> = function
+        .instructions
+        .iter()
+        .enumerate()
+        .map(|(index, instruction)| (instruction.address, index))
+        .collect();
+    indices.sort_unstable();
+    if indices.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return Err("invalid instruction in provenance CFG".into());
+    }
+    let index_of = |address: u64| {
+        indices
+            .binary_search_by_key(&address, |entry| entry.0)
+            .ok()
+            .map(|position| indices[position].1)
+    };
+    let entry = index_of(function.start).ok_or("provenance CFG has no entry instruction")?;
+    // At most two successors each: a branch target and its fall-through.
+    let mut successors = vec![([0usize; 2], 0u8); count];
     for (index, instruction) in function.instructions.iter().enumerate() {
         let next = instruction
             .address
@@ -296,16 +310,18 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
         if next > function.end {
             return Err("provenance instruction exceeds function extent".into());
         }
-        let addresses = match instruction.op {
-            Op::Return => Vec::new(),
-            Op::Jump { target } => vec![target],
-            Op::Branch { target, .. } => vec![target, next],
-            _ => vec![next],
+        let (addresses, used) = match instruction.op {
+            Op::Return => ([0, 0], 0),
+            Op::Jump { target } => ([target, 0], 1),
+            Op::Branch { target, .. } => ([target, next], 2),
+            _ => ([next, 0], 1),
         };
-        for address in addresses {
-            successors[index].push(*indices.get(&address).ok_or_else(|| {
+        for &address in &addresses[..used] {
+            let (slots, len) = &mut successors[index];
+            slots[usize::from(*len)] = index_of(address).ok_or_else(|| {
                 format!("provenance CFG successor 0x{address:x} has no instruction")
-            })?);
+            })?;
+            *len += 1;
         }
     }
     let mut initial = State {
@@ -330,7 +346,8 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
             return Err("provenance CFG propagation work limit exceeded".into());
         }
         let output = transfer(&function.instructions[index].op, states[index].unwrap());
-        for &successor in &successors[index] {
+        let (slots, len) = successors[index];
+        for &successor in &slots[..usize::from(len)] {
             let joined = if let Some(previous) = states[successor] {
                 let mut joined = previous;
                 for (slot, value) in joined.regs.iter_mut().zip(output.regs) {
