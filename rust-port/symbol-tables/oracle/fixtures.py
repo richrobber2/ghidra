@@ -271,6 +271,8 @@ def generate(output):
             save(f'limit-{tag}-symbols', image(bits, endian, symtab=dict(entsize=1, size=1_000_001)), 'resource-bound')
             save(f'limit-{tag}-symbols-at-cap-zero-count', image(bits, endian, symtab=dict(entsize=8, size=7)),
                  'resource-bound')
+            five = [dict(name=f'.t{i}', type=2, offset=SYMTAB, size=900_000, link=4, entsize=1) for i in range(5)]
+            save(f'limit-{tag}-total-symbols', image(bits, endian, extra_sections=five), 'resource-bound')
             save(f'limit-{tag}-index-table', image(bits, endian, xrows, shndx=(entries, dict(size=4 * 1_000_001))),
                  'resource-bound')
 

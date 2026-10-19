@@ -24,6 +24,9 @@ use std::fmt;
 
 /// An explicit time/resource bound per table, not a limit of the ELF format.
 pub const MAX_SYMBOLS: i32 = 1_000_000;
+/// The same kind of bound on symbols plus index entries over all tables;
+/// compatibility mode zero-fills tables past EOF, so file size does not bound it.
+pub const MAX_TOTAL_SYMBOLS: i64 = 4_000_000;
 
 pub const SHT_SYMTAB: u32 = 2;
 pub const SHT_STRTAB: u32 = 3;
@@ -100,6 +103,9 @@ pub enum ErrorKind {
         count: i32,
         limit: i32,
     },
+    TotalSymbolLimit {
+        limit: i64,
+    },
     /// `sh_link` does not name a section (Java ArrayIndexOutOfBoundsException).
     InvalidLink {
         section: u32,
@@ -147,6 +153,7 @@ impl ErrorKind {
         match self {
             Self::Sections(error) => error.name(),
             Self::SymbolCountLimit { .. } => "SymbolCountLimit",
+            Self::TotalSymbolLimit { .. } => "TotalSymbolLimit",
             Self::InvalidLink { .. } => "InvalidLink",
             Self::ZeroEntrySize { .. } => "ZeroEntrySize",
             Self::NegativeIndexTableSize { .. } => "NegativeIndexTableSize",
@@ -199,17 +206,6 @@ fn is_symbol_table(section: &SectionHeader) -> bool {
 /// Java's `(int) (size / entrySize)` on signed longs.
 fn java_count(size: u64, entry_size: u64) -> i32 {
     (size as i64).wrapping_div(entry_size as i64) as i32
-}
-
-/// `getExtendedSymbolSectionIndexTable`'s choice of index table.
-fn index_table_for(records: &[SectionHeader], table: usize) -> Option<usize> {
-    records.iter().position(|section| {
-        let link = section.link as usize;
-        section.section_type == SHT_SYMTAB_SHNDX
-            && section.link as i32 > 0
-            && link < records.len()
-            && link == table
-    })
 }
 
 /// Bytes from `offset` up to NUL or EOF; Ghidra's unbounded reader zero-fills.
@@ -298,7 +294,23 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
     let records: Vec<SectionHeader> = sections.iter().collect();
     let has_index_tables = sections.has_extended_symbol_index_table();
 
+    // The first SHT_SYMTAB_SHNDX section linked to each section, found once so
+    // many tables cannot make the lookup quadratic.
+    let mut index_tables = vec![None; records.len()];
+    if has_index_tables {
+        for (index, section) in records.iter().enumerate().rev() {
+            let link = section.link as usize;
+            if section.section_type == SHT_SYMTAB_SHNDX
+                && section.link as i32 > 0
+                && link < records.len()
+            {
+                index_tables[link] = Some(index);
+            }
+        }
+    }
+
     // Resource bounds, checked before any table is decoded (as the oracle does).
+    let mut total = 0i64;
     for (index, section) in records.iter().enumerate() {
         if !is_symbol_table(section) || is_invalid_offset(section.offset, bits) {
             continue;
@@ -307,15 +319,27 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
         if section.entry_size != 0 {
             counts.push(java_count(section.size, section.entry_size));
         }
-        if has_index_tables && let Some(table) = index_table_for(&records, index) {
+        if let Some(table) = index_tables[index] {
             counts.push(java_count(records[table].size, 4));
         }
+        total += counts
+            .iter()
+            .map(|&count| i64::from(count.max(0)))
+            .sum::<i64>();
         if let Some(&count) = counts.iter().find(|&&count| count > MAX_SYMBOLS) {
             return Err(fail(
                 ErrorKind::SymbolCountLimit {
                     section: index as u32,
                     count,
                     limit: MAX_SYMBOLS,
+                },
+                &mut warnings,
+            ));
+        }
+        if total > MAX_TOTAL_SYMBOLS {
+            return Err(fail(
+                ErrorKind::TotalSymbolLimit {
+                    limit: MAX_TOTAL_SYMBOLS,
                 },
                 &mut warnings,
             ));
@@ -413,7 +437,7 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
         let is_dynamic = sections.name(index).as_deref() == Some(".dynsym");
 
         let mut extended_index_table = None;
-        if has_index_tables && let Some(table) = index_table_for(&records, index) {
+        if let Some(table) = index_tables[index] {
             let index_section = records[table];
             let count = java_count(index_section.size, 4);
             let Ok(count) = usize::try_from(count) else {

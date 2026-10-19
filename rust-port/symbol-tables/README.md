@@ -20,8 +20,9 @@ any file fails and 2 for argument errors, and accepts regular files up to 64 MiB
 `StringTable` and `SymbolTable` records; symbol names borrow the input where they
 are valid UTF-8. The library has no third-party dependencies and forbids unsafe
 Rust. Both policies cap each symbol table and extended-index table at 1,000,000
-entries, checked before any table is decoded. That is a wrapper policy, not an
-ELF-format limit.
+entries and all of them together at 4,000,000, checked before any table is
+decoded. These are wrapper policies, not ELF-format limits: compatibility mode
+zero-fills tables past EOF, so file size alone would not bound the work.
 
 | Policy | Behavior |
 |---|---|
@@ -75,8 +76,8 @@ the same comparison over real ELF files and gcc objects.
 
 Results on this branch:
 
-- All 298 synthetic inputs match Java exactly, including warnings: 256 Java
-  acceptances with 5,006 symbols, 46 inputs with warnings and 42 rejections. Four
+- All 302 synthetic inputs match Java exactly, including warnings: 256 Java
+  acceptances with 5,006 symbols, 46 inputs with warnings and 46 rejections. Four
   of the inputs are randomized tables. Strict mode accepted 124 inputs, all with
   values identical to Java.
 - 1,798 real ELF files from `/usr/bin` and `/usr/lib/x86_64-linux-gnu`, plus gcc

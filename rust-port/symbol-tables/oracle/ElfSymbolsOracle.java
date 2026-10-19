@@ -14,6 +14,7 @@ import ghidra.app.util.bin.format.elf.*;
 public final class ElfSymbolsOracle {
     public static final int MAX_SECTION_HEADERS = 65536;
     public static final int MAX_SYMBOLS = 1_000_000;
+    public static final long MAX_TOTAL_SYMBOLS = 4_000_000;
     private static final Method PARSE_STRINGS;
     private static final Method PARSE_SYMBOLS;
     private static final Field INDEX_TABLE;
@@ -62,6 +63,7 @@ public final class ElfSymbolsOracle {
     /** Oracle resource bounds, explicitly not original Ghidra semantics. */
     private static void checkLimits(ElfHeader header, ElfSectionHeader[] sections) throws Exception {
         boolean extended = EXTENDED_INDEX.getBoolean(header);
+        long total = 0;
         for (int i = 0; i < sections.length; i++) {
             ElfSectionHeader section = sections[i];
             if (!isSymbolTable(section) || section.isInvalidOffset()) { continue; }
@@ -79,9 +81,15 @@ public final class ElfSymbolsOracle {
                 }
             }
             for (int count : counts) {
+                total += Math.max(count, 0);
+            }
+            for (int count : counts) {
                 if (count > MAX_SYMBOLS) {
                     throw new SymbolCountLimit("symbol count " + count + " exceeds " + MAX_SYMBOLS);
                 }
+            }
+            if (total > MAX_TOTAL_SYMBOLS) {
+                throw new SymbolCountLimit("total symbol count exceeds " + MAX_TOTAL_SYMBOLS);
             }
         }
     }
