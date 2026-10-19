@@ -7,6 +7,7 @@
 //! extent of zero-size symbols, recover stripped functions, apply relocations,
 //! or execute the input. An explicit address and size can select stripped code.
 
+use ghidra_elf_sections::parse_section_headers;
 use ghidra_elf_segments::{ParsePolicy, ProgramHeader, parse_program_headers};
 
 pub const MAX_IMAGE_BYTES: usize = 128 * 1024 * 1024;
@@ -139,20 +140,18 @@ impl<'a> ElfImage<'a> {
         if header.shnum == 0 {
             return Ok(image);
         }
-        let table_size = u64::from(header.shnum)
-            .checked_mul(64)
-            .ok_or("section table size overflows")?;
-        let table = checked_slice(bytes, header.shoff, table_size, "section table")?;
-        let mut sections = Vec::with_capacity(header.shnum as usize);
-        for (index, raw) in table.chunks_exact(64).enumerate() {
+        let table = parse_section_headers(bytes, ParsePolicy::Strict)
+            .map_err(|error| format!("ELF section table: {error}"))?;
+        let mut sections = Vec::with_capacity(table.len());
+        for (index, record) in table.iter().enumerate() {
             let section = Section {
-                section_type: u32_at(raw, 4),
-                flags: u64_at(raw, 8),
-                address: u64_at(raw, 16),
-                offset: u64_at(raw, 24),
-                size: u64_at(raw, 32),
-                link: u32_at(raw, 40),
-                entry_size: u64_at(raw, 56),
+                section_type: record.section_type,
+                flags: record.flags,
+                address: record.address,
+                offset: record.offset,
+                size: record.size,
+                link: record.link,
+                entry_size: record.entry_size,
             };
             if index == 0 && section.section_type != SHT_NULL {
                 return Err("section zero must have SHT_NULL type".into());
