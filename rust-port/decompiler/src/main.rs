@@ -14,20 +14,37 @@ use std::{
 };
 
 fn quote(value: &str) -> String {
-    let mut out = String::from("\"");
-    for c in value.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c < '\u{20}' => {
-                write!(out, "\\u{:04x}", c as u32).unwrap();
-            }
-            c => out.push(c),
-        }
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    if !value
+        .bytes()
+        .any(|byte| byte < 0x20 || byte == b'"' || byte == b'\\')
+    {
+        out.push_str(value);
+        out.push('"');
+        return out;
     }
+    // Every escaped character is ASCII, so unescaped runs copy as whole slices.
+    let mut run = 0;
+    for (i, byte) in value.bytes().enumerate() {
+        let escape = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0..0x20 => "",
+            _ => continue,
+        };
+        out.push_str(&value[run..i]);
+        if escape.is_empty() {
+            write!(out, "\\u{:04x}", byte).unwrap();
+        } else {
+            out.push_str(escape);
+        }
+        run = i + 1;
+    }
+    out.push_str(&value[run..]);
     out.push('"');
     out
 }
@@ -40,11 +57,14 @@ fn number(value: &str) -> Result<u64, String> {
     .map_err(|_| format!("invalid integer: {value}"))
 }
 fn load(path: &Path) -> Result<Vec<u8>, String> {
-    if !path.metadata().map_err(|e| e.to_string())?.is_file() {
+    let metadata = path.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
         return Err("input must be a regular file".into());
     }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut data = Vec::new();
+    // A size hint only; the bounded read below still decides what is loaded.
+    let hint = metadata.len().min(MAX_IMAGE_BYTES as u64 + 1) as usize;
+    let mut data = Vec::with_capacity(hint);
     file.take(MAX_IMAGE_BYTES as u64 + 1)
         .read_to_end(&mut data)
         .map_err(|e| e.to_string())?;
@@ -377,6 +397,43 @@ fn main() -> ExitCode {
         Err(error) => {
             eprintln!("{error}");
             ExitCode::from(2)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quote;
+    use std::fmt::Write;
+
+    #[test]
+    fn quote_matches_per_character_escaping() {
+        fn reference(value: &str) -> String {
+            let mut out = String::from("\"");
+            for c in value.chars() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\t' => out.push_str("\\t"),
+                    c if c < '\u{20}' => write!(out, "\\u{:04x}", c as u32).unwrap(),
+                    c => out.push(c),
+                }
+            }
+            out.push('"');
+            out
+        }
+        let all_ascii: String = (0u8..0x80).map(char::from).collect();
+        for value in [
+            "",
+            "plain_name",
+            "a\"b\\c",
+            "\u{1}x\u{1f}",
+            "é→\n\t\r",
+            &all_ascii,
+        ] {
+            assert_eq!(quote(value), reference(value), "{value:?}");
         }
     }
 }

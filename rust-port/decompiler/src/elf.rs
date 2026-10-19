@@ -352,7 +352,8 @@ impl<'a> ElfImage<'a> {
                 });
             }
         }
-        image.functions.sort_by(|a, b| {
+        // Equal keys are equal functions and dedup removes them, so stability is moot.
+        image.functions.sort_unstable_by(|a, b| {
             (a.address, a.size, &a.name, a.file_offset).cmp(&(
                 b.address,
                 b.size,

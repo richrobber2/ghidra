@@ -58,6 +58,8 @@ pub struct Emitted {
     pub image_objects: Vec<EmbeddedImage>,
 }
 
+const IMAGE_SETUP: &str = "/* IMAGE_SETUP */";
+
 fn constant(v: u64) -> String {
     format!("UINT64_C(0x{v:x})")
 }
@@ -192,6 +194,28 @@ fn condition(c: Condition) -> u8 {
     }
 }
 
+/// Append `0xNN,` initializers, 24 per line. Image objects can be most of a
+/// large library's read-only data, so this avoids per-byte formatting.
+fn push_byte_rows(out: &mut String, bytes: &[u8]) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.reserve(bytes.len() * 5 + bytes.len().div_ceil(24));
+    let mut row = Vec::with_capacity(24 * 5 + 1);
+    for chunk in bytes.chunks(24) {
+        row.clear();
+        for byte in chunk {
+            row.extend_from_slice(&[
+                b'0',
+                b'x',
+                HEX[usize::from(byte >> 4)],
+                HEX[usize::from(byte & 15)],
+                b',',
+            ]);
+        }
+        row.push(b'\n');
+        out.push_str(std::str::from_utf8(&row).unwrap());
+    }
+}
+
 pub fn emit_c(function: &LiftedFunction, name: &str) -> Result<Emitted, String> {
     emit_c_with_image(function, name, Err("no image supplied"), ReturnKind::U64)
 }
@@ -229,7 +253,8 @@ pub fn emit_c_with_image(
     } else {
         "uint64_t "
     };
-    writeln!(out,"\n/* Native Rust lifting; six unsigned integer SysV arguments.\n * Labels preserve the recovered CFG. Runtime guards reject undefined state. */\n{result_type}{function_name}(uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5) {{\n  rg_state s={{0}};\n  s.r[4]=(rg_value){{RG_ENTRY_SP,UINT64_MAX,1}};\n  s.r[7]=rg_const(a0); s.r[6]=rg_const(a1); s.r[2]=rg_const(a2);\n  s.r[1]=rg_const(a3); s.r[8]=rg_const(a4); s.r[9]=rg_const(a5);\n  /* IMAGE_SETUP */\n  goto L_{:x};",function.start).unwrap();
+    writeln!(out,"\n/* Native Rust lifting; six unsigned integer SysV arguments.\n * Labels preserve the recovered CFG. Runtime guards reject undefined state. */\n{result_type}{function_name}(uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5) {{\n  rg_state s={{0}};\n  s.r[4]=(rg_value){{RG_ENTRY_SP,UINT64_MAX,1}};\n  s.r[7]=rg_const(a0); s.r[6]=rg_const(a1); s.r[2]=rg_const(a2);\n  s.r[1]=rg_const(a3); s.r[8]=rg_const(a4); s.r[9]=rg_const(a5);\n  {IMAGE_SETUP}\n  goto L_{:x};",function.start).unwrap();
+    let setup_at = out.find(IMAGE_SETUP).expect("header placeholder");
     for (ins, state) in function.instructions.iter().zip(&states) {
         if out.len() > 32 * 1024 * 1024 {
             return Err("32 MiB emitted C limit exceeded".into());
@@ -301,7 +326,7 @@ pub fn emit_c_with_image(
     out.push_str("}\n");
     let mut prefix = String::from(include_str!("runtime.h"));
     let mut image_objects = Vec::new();
-    if !ctx.used.is_empty() {
+    let setup = if !ctx.used.is_empty() {
         let model = ctx.image.map_err(str::to_owned)?;
         for (i, id) in ctx.used.iter().enumerate() {
             let region = model.region(*id).ok_or("missing image region")?;
@@ -321,12 +346,7 @@ pub fn emit_c_with_image(
                 i + 1
             )
             .unwrap();
-            for chunk in region.bytes.chunks(24) {
-                for byte in chunk {
-                    write!(prefix, "0x{byte:02x},").unwrap();
-                }
-                prefix.push('\n');
-            }
+            push_byte_rows(&mut prefix, &region.bytes);
             prefix.push_str("};\n");
             image_objects.push(EmbeddedImage {
                 id: i as u32 + 1,
@@ -348,17 +368,19 @@ pub fn emit_c_with_image(
             .unwrap();
         }
         prefix.push_str("};\n");
-        out = out.replace(
-            "/* IMAGE_SETUP */",
-            &format!(
-                "s.images={function_name}_images; s.image_count={};",
-                image_objects.len()
-            ),
-        );
+        format!(
+            "s.images={function_name}_images; s.image_count={};",
+            image_objects.len()
+        )
     } else {
-        out = out.replace("/* IMAGE_SETUP */", "");
-    }
-    prefix.push_str(&out);
+        String::new()
+    };
+    // The header holds the only placeholder; splice instead of rescanning `out`.
+    let (head, body) = out.split_at(setup_at);
+    prefix.reserve(out.len() + setup.len());
+    prefix.push_str(head);
+    prefix.push_str(&setup);
+    prefix.push_str(&body[IMAGE_SETUP.len()..]);
     if prefix.len() > 32 * 1024 * 1024 {
         return Err("32 MiB emitted C limit exceeded".into());
     }
@@ -374,6 +396,23 @@ pub fn emit_c_with_image(
 mod tests {
     use super::*;
     use crate::lift::lift_function;
+
+    #[test]
+    fn byte_rows_match_formatted_initializers() {
+        let bytes: Vec<u8> = (0..=255).chain(0..=60).collect();
+        for len in [0, 1, 23, 24, 25, 48, bytes.len()] {
+            let mut expected = String::new();
+            for chunk in bytes[..len].chunks(24) {
+                for byte in chunk {
+                    write!(expected, "0x{byte:02x},").unwrap();
+                }
+                expected.push('\n');
+            }
+            let mut actual = String::new();
+            push_byte_rows(&mut actual, &bytes[..len]);
+            assert_eq!(actual, expected, "length {len}");
+        }
+    }
 
     #[test]
     fn narrow_returns_require_only_their_low_bits() {
