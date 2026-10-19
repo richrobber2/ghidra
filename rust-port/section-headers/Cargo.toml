@@ -1,0 +1,22 @@
+[package]
+name = "ghidra-elf-sections"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-guided Ghidra ELF section-header table parser"
+
+[dependencies]
+ghidra-elf = { path = "..", version = "0.1.0" }
+
+[lib]
+name = "ghidra_elf_sections"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ghidra-elf-sections"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = false

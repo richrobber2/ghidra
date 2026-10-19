@@ -15,6 +15,12 @@ segment-table iteration and a ready-to-run JSON CLI, with original-Java
 differential tests and explicit strict/compatibility policies. Its build and
 measurement artifacts are isolated from this first component.
 
+The third slice is the [Rust section-header table parser](section-headers/README.md).
+It decodes section records, resolves section names the way Ghidra does (including
+its UTF-8 replacement rules) and reproduces the compressed-section header probe,
+with original-Java differential tests over synthetic fixtures and real system
+binaries.
+
 A [standalone Rust decompiler prototype](decompiler/README.md) now uses these
 components to discover x86-64 ELF functions, lift scalar instructions/control
 flow and emit guarded executable C without Java or the original native engine.
@@ -145,7 +151,7 @@ recorded commit. It is not a complete transitive dependency graph.
 | Endianness recovery | `ElfHeader.java:1365` | Track declared byte order and actual header-decoding byte order separately. |
 | Parse orchestration | `ElfHeader.java:290` | Later: program headers → sections → dynamic table → strings → library names → symbols → relocations. |
 | Program headers | `ElfProgramHeader.java:90`, `ElfHeader.java:1149` | Second slice; distinguish raw offsets from adjusted loader values. |
-| Section headers | `ElfSectionHeader.java:99`, `ElfHeader.java:1111` | Third slice; add names, SHT_NOBITS and compression in explicit increments. |
+| Section headers | `ElfSectionHeader.java:99`, `ElfHeader.java:1111` | Third slice, implemented in `section-headers/`: records, names and the compression-header probe; no decompression. |
 | String tables | `ElfStringTable.java:56` | Preserve raw bytes; specify name-decoding/recovery policy before matching Java string conversion. |
 | Symbols | `ElfSymbol.java:137`, `ElfSymbolTable.java:62`, `ElfHeader.java:850` | Later slice, following section/string support. ELF32/64 layouts differ. |
 | Dynamic metadata | `ElfHeader.java:692`, `:926`, `:1016` | Defer initially. Sectionless dynamic-symbol discovery needs segment/address translation and hash-table logic. |
