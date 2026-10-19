@@ -32,6 +32,11 @@ dynamic string table, `DT_NEEDED` library names and the dynamic symbol table, wh
 size comes from the `DT_HASH`, `DT_GNU_HASH` or `DT_GNU_XHASH` table. This finds
 symbols in files with no section headers.
 
+The sixth slice, the [Rust relocation-table parser](relocation-tables/README.md),
+adds Ghidra's next parse step: the `DT_REL`, `DT_RELA`, `DT_JMPREL` and `DT_RELR`
+tables found through the dynamic table, then every relocation section, decoded
+into relocation records. Applying relocations stays out of scope.
+
 A [standalone Rust decompiler prototype](decompiler/README.md) now uses these
 components to discover x86-64 ELF functions, lift scalar instructions/control
 flow and emit guarded executable C without Java or the original native engine.
@@ -166,10 +171,11 @@ recorded commit. It is not a complete transitive dependency graph.
 | String tables | `ElfStringTable.java:56` | Implemented in `symbol-tables/` with Java's UTF-8 decoding and `trim()`. |
 | Symbols | `ElfSymbol.java:137`, `ElfSymbolTable.java:62`, `ElfHeader.java:850` | Fourth slice, implemented in `symbol-tables/` for section-based tables. |
 | Dynamic metadata | `ElfHeader.java:692`, `:926`, `:1016`, `ElfDynamicTable.java` | Fifth slice, implemented in `dynamic-table/`: the dynamic table, `DT_STRTAB`/`DT_SYMTAB` tables, `DT_NEEDED` names and hash-table symbol counts, with `PRE`-trailer address adjustment. |
+| Relocation tables | `ElfHeader.java:429`, `ElfRelocationTable.java`, `ElfRelocation.java` | Sixth slice, implemented in `relocation-tables/`: dynamic and section-based tables in the standard and RELR formats; Android packed tables are rejected. |
 | Format detection/loading | `Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfLoader.java:116`, `:162` | Keep Java loader integration outside the first parser. |
 | Program construction | `Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfProgramBuilder.java` | Defer: depends on Program, memory, symbols, data types and monitor/log infrastructure. |
 | Architecture adjustments | `.../format/elf/extend/ElfLoadAdapter.java`, `ElfExtensionFactory.java` | Defer adapters, adjusted addresses, architecture hooks and loading decisions. |
-| Relocations | `.../format/elf/relocation/` and `Ghidra/Processors/*/.../elf/relocation/` | Separate later project; not merely another header table. |
+| Relocation processing | `.../format/elf/relocation/` and `Ghidra/Processors/*/.../elf/relocation/` | Separate later project: applying relocations needs architecture handlers and a memory image. |
 
 `StructConverter` and `toDataType()` belong to Ghidra's data-type presentation layer;
 the Rust decoding library should not reproduce them. Java constructors still have

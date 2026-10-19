@@ -236,6 +236,55 @@ fn prelink_base(bytes: &[u8], little: bool) -> Option<u64> {
     }))
 }
 
+/// `getProgramLoadHeaderContaining`, with Java's signed comparisons.
+fn load_containing(
+    program_headers: &[ProgramHeader],
+    base: u64,
+    address: u64,
+) -> Option<&ProgramHeader> {
+    let address = address as i64;
+    program_headers.iter().find(|header| {
+        let start = base.wrapping_add(header.virtual_address) as i64;
+        let end = (header.memory_size as i64)
+            .wrapping_sub(1)
+            .wrapping_add(start);
+        header.segment_type == PT_LOAD && address >= start && address <= end
+    })
+}
+
+/// `ElfProgramHeader.getOffset(address)` with the default load adapter.
+fn load_offset(base: u64, header: &ProgramHeader, address: u64) -> Result<i64, ErrorKind> {
+    if header.segment_type != PT_LOAD || header.file_size == 0 || header.memory_size == 0 {
+        return Err(ErrorKind::UnloadedSegment { address });
+    }
+    // The addressable unit size is filesz / filesz, always 1.
+    Ok(
+        (address.wrapping_sub(base.wrapping_add(header.virtual_address)) as i64)
+            .wrapping_add(header.offset as i64),
+    )
+}
+
+impl ElfDynamic<'_> {
+    /// An address as Ghidra adjusts it for the `PRE` trailer.
+    pub fn adjust_address(&self, address: u64) -> u64 {
+        self.prelink_base.unwrap_or(0).wrapping_add(address)
+    }
+
+    /// The `PT_LOAD` header Ghidra finds for an adjusted address.
+    pub fn load_containing(&self, address: u64) -> Option<&ProgramHeader> {
+        load_containing(
+            &self.program_headers,
+            self.prelink_base.unwrap_or(0),
+            address,
+        )
+    }
+
+    /// The file offset Ghidra computes for an adjusted address in `header`.
+    pub fn load_offset(&self, header: &ProgramHeader, address: u64) -> Result<i64, ErrorKind> {
+        load_offset(self.prelink_base.unwrap_or(0), header, address)
+    }
+}
+
 impl Image<'_, '_> {
     fn adjust(&self, address: u64) -> u64 {
         self.base.wrapping_add(address)
@@ -280,28 +329,12 @@ impl Image<'_, '_> {
                 .is_some_and(|end| end <= self.bytes.len() as u64)
     }
 
-    /// `getProgramLoadHeaderContaining`, with Java's signed comparisons.
     fn load_containing(&self, address: u64) -> Option<&ProgramHeader> {
-        let address = address as i64;
-        self.program_headers.iter().find(|header| {
-            let start = self.adjust(header.virtual_address) as i64;
-            let end = (header.memory_size as i64)
-                .wrapping_sub(1)
-                .wrapping_add(start);
-            header.segment_type == PT_LOAD && address >= start && address <= end
-        })
+        load_containing(self.program_headers, self.base, address)
     }
 
-    /// `ElfProgramHeader.getOffset(address)` with the default load adapter.
     fn load_offset(&self, header: &ProgramHeader, address: u64) -> Result<i64, ErrorKind> {
-        if header.segment_type != PT_LOAD || header.file_size == 0 || header.memory_size == 0 {
-            return Err(ErrorKind::UnloadedSegment { address });
-        }
-        // The addressable unit size is filesz / filesz, always 1.
-        Ok(
-            (address.wrapping_sub(self.adjust(header.virtual_address)) as i64)
-                .wrapping_add(header.offset as i64),
-        )
+        load_offset(self.base, header, address)
     }
 
     /// `getMaxOffsetForLoadedRegionContaining(offset, 12)`.

@@ -1,0 +1,46 @@
+{
+  "commit": "8f2596c425d6ddfb1824d2a0e23771c5c1e9d749",
+  "pinned_reference_sha256": {
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfHeader.java": "07977505cb2591eb4f47ec0d5eaa7c0aa6eaf1c26736e0d8103c050b7a508b0c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeader.java": "f349366b2326562feb8a16755a35505a4175578cc4175b6bed0739b4f8fcbd3a",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeader.java": "63dcba63077981371355913bb2017056fb2437c6e1c5b7922ddf08ef64fda71c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfCompressedSectionHeader.java": "dd1c1393e209ba10667e1e4d714b5b58fd7a3f61a3f7e035c199ad9503cabef9",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamicTable.java": "17eb8fd066e6f54ad63d2ec72876292a0981ef3d12a50e52c68bd87ff1ea892d",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamic.java": "60611f2b0ba82ca4d825108285eec1b752e10fe776aa794af23e8671053e82ff",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDynamicType.java": "44992b71fc89322872d722102d7ce062f2cb38f5baec3519e5d0896e29491c18",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfStringTable.java": "cb9481e50066b64c5c998a742fcb3fb2dcdb52c09bffde1590b4f1d26e8df867",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolTable.java": "362cb819a386654443b980aad1e65cc2b1ffc7831254976438ccce723d8343ff",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbol.java": "efa77781770701fc159ac06681dfb5f6e357ca03654899f8ac9526a206b5204c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeaderConstants.java": "fb9ae7bc67c98da5114a0cb9e4dd2dc310cbceaecca3637fbb7f8181d14b0775",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfProgramHeaderConstants.java": "acfc62a97169692d037bfb29b6b0012a46aa655dafec861c555237ed0f259d55",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/extend/ElfLoadAdapter.java": "3641bee17ab7d1800a4265023422b536470fce6fe4a20fcea7fdfc1acb90d7a8",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/UnlimitedByteProviderWrapper.java": "9c3e67d5a452b56cea1ac4ecdb8d1f5f721888fe96518b1aceb6e161ff737b2f",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/BinaryReader.java": "0821e053a862f18bf7895f2298ffc02ee5809310d8c5faf74af03afb562c3d10",
+    "/workspace/ghidra-rust-port/Cargo.toml": "006b0b9a7e20bf8eed366b804ccaaabc936f089b41dd88e7fadb68f278c8c022",
+    "/workspace/ghidra-rust-port/src/lib.rs": "df0256f7a5769c8f995c3dc5db44df55678e33812080e6e15da6b3085d1a9acd",
+    "/workspace/ghidra-rust-port/program-headers/Cargo.toml": "a836763df66c6b7734dfad59ddfd3d65b82ce4362009b77cd565a380aa181229",
+    "/workspace/ghidra-rust-port/program-headers/src/lib.rs": "5964df1625c6c77aca4bfb8f415b80c719f24f3155a70b46aa4bebd0c5783887",
+    "/workspace/ghidra-rust-port/section-headers/Cargo.toml": "f26c085ce58b1c7eebdc910821fc35f7f3c34377f588658b1047faad1d08d5c5",
+    "/workspace/ghidra-rust-port/section-headers/src/lib.rs": "e6fd6ccd5ae60661601ac1d655f64ae346198f27717296d19669e896eac22349",
+    "/workspace/ghidra-rust-port/symbol-tables/Cargo.toml": "9a34dba1af1a4c86cf14e450d7a2582b9b3b83fb515495113228b7551da5b956",
+    "/workspace/ghidra-rust-port/symbol-tables/src/lib.rs": "4a524b381fbf8f12d19f1cd39219f83af9c697e45e08691df84f2e0da55f4509",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocationTable.java": "ff87bab0c57e2cad8f51584e70e682bff21b6dd2e0698a8797b34f5d7406951d",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocation.java": "cd17a9dc4ef0f532824e0f027bd9eaaf0482c5bd12d6399f036e84c9ff5299bf",
+    "/workspace/ghidra-rust-port/dynamic-table/Cargo.toml": "c325364a4be27a278f0abda793b4a9e45c0266b70328c8cf4e87236a321bf17e",
+    "/workspace/ghidra-rust-port/dynamic-table/src/lib.rs": "2ea6a0e3664464022906c8bb0c7205b2fecd8f5bc349283f4717d1e6c2eb5de4",
+    "/workspace/ghidra-rust-port/dynamic-table/oracle/fixtures.py": "666db1284fdfa2470f457aa172dfd2d7a036a002a8c363d6a42715dbb6e48a9b"
+  },
+  "boundary": {
+    "header": "ElfHeader(ByteProvider, Consumer<String>)",
+    "sequence": "private parseProgramHeaders(), parseSectionHeaders(), private parseDynamicTable(), parseStringTables(), parseDynamicLibraryNames(), parseSymbolTables(), parseRelocationTables(): ElfHeader.parse() order up to the relocation tables",
+    "adapter": "Default ElfLoadAdapter; initElfLoadAdapter() is not called, so extension adapters and their relocation classes never run",
+    "records": "ElfRelocationTable, ElfRelocation (standard and RELR formats)",
+    "addresses": "PRE-trailer adjustment applied where Ghidra applies it; section tables report raw sh_addr, tables found through the dynamic table report the address Ghidra stored",
+    "excluded": [
+      "Android packed relocation tables (APS2), rejected by both sides",
+      "GNU version tables (parseGNU_d, parseGNU_r)",
+      "architecture load adapters",
+      "relocation processing and loader integration"
+    ]
+  }
+}

@@ -42,7 +42,9 @@ The reference is the original `ElfHeader` constructor followed by the private
 `parseProgramHeaders()`, `parseSectionHeaders()`, `parseDynamicTable()`,
 `parseStringTables()`, `parseDynamicLibraryNames()` and `parseSymbolTables()`, in
 `parse()` order. The load adapter stays the default one, so architecture
-extensions never run; relocation and GNU version tables are out of scope.
+extensions never run. Relocation tables are parsed by the
+[relocation-table parser](../relocation-tables/README.md); GNU version tables are
+out of scope.
 Compatibility mode matches Ghidra on these points:
 
 - The dynamic table comes from a single `PT_DYNAMIC`, located through its virtual
