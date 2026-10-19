@@ -25,7 +25,7 @@ The fourth slice, the [Rust string- and symbol-table parser](symbol-tables/READM
 decodes section-based `.symtab`/`.dynsym` tables with Ghidra's name lookup,
 warnings and extended section indices. Tables reachable only through the dynamic
 table are left for the dynamic-table slice. The decompiler now reads its section
-table through the section-header parser.
+table and symbol records through these two parsers.
 
 A [standalone Rust decompiler prototype](decompiler/README.md) now uses these
 components to discover x86-64 ELF functions, lift scalar instructions/control

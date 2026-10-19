@@ -21,6 +21,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghidra-elf-symbols"
+version = "0.1.0"
+dependencies = [
+ "ghidra-elf",
+ "ghidra-elf-sections",
+]
+
+[[package]]
 name = "iced-x86"
 version = "1.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -42,5 +50,6 @@ dependencies = [
  "ghidra-elf",
  "ghidra-elf-sections",
  "ghidra-elf-segments",
+ "ghidra-elf-symbols",
  "iced-x86",
 ]
