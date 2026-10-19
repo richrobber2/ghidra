@@ -87,7 +87,7 @@ fn accepted(out: &mut String, parsed: &ElfSymbols<'_>) {
         write!(
             out,
             "{{\"section\":{},\"offset_hex\":\"{:x}\",\"addr_hex\":\"{:x}\",\"size_hex\":\"{:x}\"}}",
-            t.section_index, t.offset, t.address, t.size
+            t.section_index.unwrap(), t.offset, t.address, t.size
         )
         .unwrap();
     }
@@ -97,8 +97,8 @@ fn accepted(out: &mut String, parsed: &ElfSymbols<'_>) {
             out.push(',');
         }
         write!(out, "{{\"section\":{},\"dynamic\":{},\"offset_hex\":\"{:x}\",\"addr_hex\":\"{:x}\",\"size_hex\":\"{:x}\",\"entsize_hex\":\"{:x}\",\"symbol_count\":{},\"string_table_section\":",
-               t.section_index, t.is_dynamic, t.offset, t.address, t.size, t.entry_size, t.symbol_count).unwrap();
-        optional(out, t.string_table.map(|s| s.section_index));
+               t.section_index.unwrap(), t.is_dynamic, t.offset, t.address, t.size, t.entry_size, t.symbol_count).unwrap();
+        optional(out, t.string_table.map(|s| s.section_index.unwrap()));
         out.push_str(",\"extended_index_count\":");
         optional(
             out,

@@ -268,7 +268,7 @@ impl<'a> ElfImage<'a> {
             })?;
         let mut parsed_tables = vec![None; sections.len()];
         for table in &parsed.symbol_tables {
-            parsed_tables[table.section_index as usize] = Some(table);
+            parsed_tables[table.section_index.unwrap() as usize] = Some(table);
         }
 
         let mut total_name_bytes = 0usize;

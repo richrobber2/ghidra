@@ -38,7 +38,8 @@ pub const SHN_XINDEX: u16 = 0xffff;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StringTable {
-    pub section_index: u32,
+    /// `None` for a table found only through the dynamic table.
+    pub section_index: Option<u32>,
     pub offset: u64,
     pub address: u64,
     pub size: u64,
@@ -80,7 +81,8 @@ pub struct ExtendedIndexTable {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolTable<'a> {
-    pub section_index: u32,
+    /// `None` for a table found only through the dynamic table.
+    pub section_index: Option<u32>,
     /// Ghidra's test: the section is named `.dynsym`.
     pub is_dynamic: bool,
     pub offset: u64,
@@ -91,6 +93,8 @@ pub struct SymbolTable<'a> {
     /// negative, in which case no symbols are decoded.
     pub symbol_count: i32,
     pub string_table: Option<StringTable>,
+    /// Position of `string_table` in Ghidra's string-table list.
+    pub string_table_index: Option<usize>,
     pub extended_index_table: Option<ExtendedIndexTable>,
     pub symbols: Vec<Symbol<'a>>,
 }
@@ -99,7 +103,8 @@ pub struct SymbolTable<'a> {
 pub enum ErrorKind {
     Sections(ghidra_elf_sections::ErrorKind),
     SymbolCountLimit {
-        section: u32,
+        /// `None` for a table with no section.
+        section: Option<u32>,
         count: i32,
         limit: i32,
     },
@@ -282,37 +287,63 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
     })?;
     let missing = sections.missing();
     let mut warnings = Vec::new();
-    let fail = |kind, warnings: &mut Vec<String>| ParseFailure {
-        kind,
-        missing,
-        warnings: std::mem::take(warnings),
-    };
-    let header = *sections.header();
-    let bits = header.class_bits;
-    let little = header.header_little_endian;
-    let strict = policy == ParsePolicy::Strict;
-    let records: Vec<SectionHeader> = sections.iter().collect();
-    let has_index_tables = sections.has_extended_symbol_index_table();
+    let result = check_symbol_limits(&sections, None).and_then(|()| {
+        let string_tables = section_string_tables(&sections);
+        let symbol_tables =
+            decode_section_symbol_tables(bytes, policy, &sections, &string_tables, &mut warnings)?;
+        Ok((string_tables, symbol_tables))
+    });
+    match result {
+        Ok((string_tables, symbol_tables)) => Ok(ElfSymbols {
+            sections,
+            string_tables,
+            symbol_tables,
+            warnings,
+        }),
+        Err(kind) => Err(ParseFailure {
+            kind,
+            missing,
+            warnings,
+        }),
+    }
+}
 
-    // The first SHT_SYMTAB_SHNDX section linked to each section, found once so
-    // many tables cannot make the lookup quadratic.
-    let mut index_tables = vec![None; records.len()];
-    if has_index_tables {
-        for (index, section) in records.iter().enumerate().rev() {
+/// The first `SHT_SYMTAB_SHNDX` section linked to each section, found once so
+/// many tables cannot make the lookup quadratic.
+fn index_table_links(sections: &SectionHeaders<'_>) -> Vec<Option<usize>> {
+    let mut index_tables = vec![None; sections.len()];
+    if sections.has_extended_symbol_index_table() {
+        for (index, section) in sections
+            .iter()
+            .enumerate()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
             let link = section.link as usize;
             if section.section_type == SHT_SYMTAB_SHNDX
                 && section.link as i32 > 0
-                && link < records.len()
+                && link < sections.len()
             {
                 index_tables[link] = Some(index);
             }
         }
     }
+    index_tables
+}
 
-    // Resource bounds, checked before any table is decoded (as the oracle does).
+/// The wrapper resource bounds, checked before any table is decoded: each
+/// section-based symbol table and its index table, then `extra` (a table with no
+/// section, such as one found through the dynamic table), and their running total.
+pub fn check_symbol_limits(
+    sections: &SectionHeaders<'_>,
+    extra: Option<i32>,
+) -> Result<(), ErrorKind> {
+    let bits = sections.header().class_bits;
+    let index_tables = index_table_links(sections);
     let mut total = 0i64;
-    for (index, section) in records.iter().enumerate() {
-        if !is_symbol_table(section) || is_invalid_offset(section.offset, bits) {
+    for (index, section) in sections.iter().enumerate() {
+        if !is_symbol_table(&section) || is_invalid_offset(section.offset, bits) {
             continue;
         }
         let mut counts = Vec::with_capacity(2);
@@ -320,50 +351,80 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
             counts.push(java_count(section.size, section.entry_size));
         }
         if let Some(table) = index_tables[index] {
-            counts.push(java_count(records[table].size, 4));
+            counts.push(java_count(sections.get(table).unwrap().size, 4));
         }
         total += counts
             .iter()
             .map(|&count| i64::from(count.max(0)))
             .sum::<i64>();
         if let Some(&count) = counts.iter().find(|&&count| count > MAX_SYMBOLS) {
-            return Err(fail(
-                ErrorKind::SymbolCountLimit {
-                    section: index as u32,
-                    count,
-                    limit: MAX_SYMBOLS,
-                },
-                &mut warnings,
-            ));
+            return Err(ErrorKind::SymbolCountLimit {
+                section: Some(index as u32),
+                count,
+                limit: MAX_SYMBOLS,
+            });
         }
         if total > MAX_TOTAL_SYMBOLS {
-            return Err(fail(
-                ErrorKind::TotalSymbolLimit {
-                    limit: MAX_TOTAL_SYMBOLS,
-                },
-                &mut warnings,
-            ));
+            return Err(ErrorKind::TotalSymbolLimit {
+                limit: MAX_TOTAL_SYMBOLS,
+            });
         }
     }
+    if let Some(count) = extra {
+        if count > MAX_SYMBOLS {
+            return Err(ErrorKind::SymbolCountLimit {
+                section: None,
+                count,
+                limit: MAX_SYMBOLS,
+            });
+        }
+        if total + i64::from(count.max(0)) > MAX_TOTAL_SYMBOLS {
+            return Err(ErrorKind::TotalSymbolLimit {
+                limit: MAX_TOTAL_SYMBOLS,
+            });
+        }
+    }
+    Ok(())
+}
 
-    let string_tables: Vec<StringTable> = records
+/// Ghidra's string-table list before any dynamic string table: every
+/// `SHT_STRTAB` section, in section order.
+pub fn section_string_tables(sections: &SectionHeaders<'_>) -> Vec<StringTable> {
+    sections
         .iter()
         .enumerate()
         .filter(|(_, section)| section.section_type == SHT_STRTAB)
         .map(|(index, section)| StringTable {
-            section_index: index as u32,
+            section_index: Some(index as u32),
             offset: section.offset,
             address: section.address,
             size: section.size,
         })
-        .collect();
+        .collect()
+}
 
-    let file_length = bytes.len() as u64;
-    let in_file = |offset: u64, size: u64| {
-        offset
-            .checked_add(size)
-            .is_some_and(|end| end <= file_length)
-    };
+fn in_file(bytes: &[u8], offset: u64, size: u64) -> bool {
+    offset
+        .checked_add(size)
+        .is_some_and(|end| end <= bytes.len() as u64)
+}
+
+/// Every `SHT_SYMTAB`/`SHT_DYNSYM` section with a valid offset, decoded against
+/// `string_tables` (Ghidra's whole list, which may end with a dynamic string
+/// table). Limits are not checked here; see [`check_symbol_limits`].
+pub fn decode_section_symbol_tables<'a>(
+    bytes: &'a [u8],
+    policy: ParsePolicy,
+    sections: &SectionHeaders<'a>,
+    string_tables: &[StringTable],
+    warnings: &mut Vec<String>,
+) -> Result<Vec<SymbolTable<'a>>, ErrorKind> {
+    let header = *sections.header();
+    let bits = header.class_bits;
+    let little = header.header_little_endian;
+    let strict = policy == ParsePolicy::Strict;
+    let records: Vec<SectionHeader> = sections.iter().collect();
+    let index_tables = index_table_links(sections);
     let mut symbol_tables = Vec::new();
     for (index, section) in records.iter().enumerate() {
         if !is_symbol_table(section) {
@@ -372,66 +433,48 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
         let table_index = index as u32;
         if is_invalid_offset(section.offset, bits) {
             if strict {
-                return Err(fail(
-                    ErrorKind::TableOutOfBounds {
-                        section: table_index,
-                    },
-                    &mut warnings,
-                ));
+                return Err(ErrorKind::TableOutOfBounds {
+                    section: table_index,
+                });
             }
             continue;
         }
         let Some(linked) = records.get(section.link as usize) else {
-            return Err(fail(
-                ErrorKind::InvalidLink {
-                    section: table_index,
-                    link: section.link,
-                },
-                &mut warnings,
-            ));
+            return Err(ErrorKind::InvalidLink {
+                section: table_index,
+                link: section.link,
+            });
         };
-        let string_table = string_tables
+        let string_table_index = string_tables
             .iter()
-            .find(|table| table.offset == linked.offset)
-            .copied();
+            .position(|table| table.offset == linked.offset);
+        let string_table = string_table_index.map(|position| string_tables[position]);
         if strict {
             let canonical = if bits == 64 { 24 } else { 16 };
             if linked.section_type != SHT_STRTAB {
-                return Err(fail(
-                    ErrorKind::NotStringTable {
-                        section: table_index,
-                        link: section.link,
-                    },
-                    &mut warnings,
-                ));
+                return Err(ErrorKind::NotStringTable {
+                    section: table_index,
+                    link: section.link,
+                });
             }
             match string_table {
-                Some(table) if in_file(table.offset, table.size) => {}
+                Some(table) if in_file(bytes, table.offset, table.size) => {}
                 _ => {
-                    return Err(fail(
-                        ErrorKind::MissingStringTable {
-                            section: table_index,
-                        },
-                        &mut warnings,
-                    ));
+                    return Err(ErrorKind::MissingStringTable {
+                        section: table_index,
+                    });
                 }
             }
             if section.entry_size != canonical {
-                return Err(fail(
-                    ErrorKind::InvalidEntrySize {
-                        section: table_index,
-                        entry_size: section.entry_size,
-                    },
-                    &mut warnings,
-                ));
+                return Err(ErrorKind::InvalidEntrySize {
+                    section: table_index,
+                    entry_size: section.entry_size,
+                });
             }
-            if section.size % canonical != 0 || !in_file(section.offset, section.size) {
-                return Err(fail(
-                    ErrorKind::TableOutOfBounds {
-                        section: table_index,
-                    },
-                    &mut warnings,
-                ));
+            if section.size % canonical != 0 || !in_file(bytes, section.offset, section.size) {
+                return Err(ErrorKind::TableOutOfBounds {
+                    section: table_index,
+                });
             }
         }
         let is_dynamic = sections.name(index).as_deref() == Some(".dynsym");
@@ -441,20 +484,14 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
             let index_section = records[table];
             let count = java_count(index_section.size, 4);
             let Ok(count) = usize::try_from(count) else {
-                return Err(fail(
-                    ErrorKind::NegativeIndexTableSize {
-                        section: table as u32,
-                    },
-                    &mut warnings,
-                ));
+                return Err(ErrorKind::NegativeIndexTableSize {
+                    section: table as u32,
+                });
             };
-            if strict && !in_file(index_section.offset, 4 * count as u64) {
-                return Err(fail(
-                    ErrorKind::TableOutOfBounds {
-                        section: table as u32,
-                    },
-                    &mut warnings,
-                ));
+            if strict && !in_file(bytes, index_section.offset, 4 * count as u64) {
+                return Err(ErrorKind::TableOutOfBounds {
+                    section: table as u32,
+                });
             }
             let mut entries = vec![0u32; count];
             let start = index_section.offset as i64;
@@ -477,116 +514,27 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
         }
 
         if section.entry_size == 0 {
-            return Err(fail(
-                ErrorKind::ZeroEntrySize {
-                    section: table_index,
-                },
-                &mut warnings,
-            ));
+            return Err(ErrorKind::ZeroEntrySize {
+                section: table_index,
+            });
         }
         let symbol_count = java_count(section.size, section.entry_size);
-        let decoded = symbol_count.max(0) as u32;
-        let last_field = if bits == 64 { 16 } else { 14 };
-        let mut symbols = Vec::with_capacity(decoded as usize);
-        for symbol in 0..decoded {
-            let position = (section.offset as i64)
-                .wrapping_add((section.entry_size as i64).wrapping_mul(i64::from(symbol)));
-            if position < 0 || position > i64::MAX - last_field {
-                return Err(fail(
-                    ErrorKind::InvalidSymbolOffset {
-                        section: table_index,
-                        symbol,
-                    },
-                    &mut warnings,
-                ));
-            }
-            let record = padded::<24>(bytes, position as u64);
-            let (name_index, value, size, info, other, section_index) = if bits == 64 {
-                (
-                    u32_at(&record, 0, little),
-                    u64_at(&record, 8, little),
-                    u64_at(&record, 16, little),
-                    record[4],
-                    record[5],
-                    u16_at(&record, 6, little),
-                )
-            } else {
-                (
-                    u32_at(&record, 0, little),
-                    u64::from(u32_at(&record, 4, little)),
-                    u64::from(u32_at(&record, 8, little)),
-                    record[12],
-                    record[13],
-                    u16_at(&record, 14, little),
-                )
-            };
-            let mut value = Symbol {
-                index: symbol,
-                name: None,
-                name_index,
-                value,
-                size,
-                info,
-                other,
-                section_index,
-                extended_section_index: 0,
-            };
-            if name_index == 0
-                && value.symbol_type() == STT_SECTION
-                && section_index < SHN_LORESERVE
-                && usize::from(section_index) < records.len()
-            {
-                value.name = sections.name(usize::from(section_index));
-            }
-            if section_index == SHN_XINDEX
-                && let Some(table) = &extended_index_table
-                && let Some(&entry) = table.entries.get(symbol as usize)
-            {
-                value.extended_section_index = entry;
-            }
-            symbols.push(value);
-        }
-
-        // Ghidra reads names sorted by signed st_name; warnings follow that order.
-        if let Some(strings) = string_table {
-            let mut order: Vec<u32> = (0..decoded).collect();
-            order.sort_by_key(|&i| symbols[i as usize].name_index as i32);
-            for i in order {
-                let symbol = &symbols[i as usize];
-                if symbol.name.is_some() {
-                    continue;
-                }
-                let name = if strict {
-                    let end = strings.offset + strings.size;
-                    let start = strings.offset + u64::from(symbol.name_index);
-                    if u64::from(symbol.name_index) >= strings.size {
-                        return Err(fail(
-                            ErrorKind::NameOutOfBounds {
-                                section: table_index,
-                                symbol: i,
-                            },
-                            &mut warnings,
-                        ));
-                    }
-                    if !bytes[start as usize..end as usize].contains(&0) {
-                        return Err(fail(
-                            ErrorKind::UnterminatedName {
-                                section: table_index,
-                                symbol: i,
-                            },
-                            &mut warnings,
-                        ));
-                    }
-                    Some(java_trim(java_utf8_lossy(c_string(bytes, start))))
-                } else {
-                    read_string(bytes, strings, symbol.name_index, &mut warnings)
-                };
-                symbols[i as usize].name = name;
-            }
-        }
-
+        let symbols = decode_symbols(
+            bytes,
+            policy,
+            sections,
+            TableLayout {
+                id: table_index,
+                offset: section.offset,
+                entry_size: section.entry_size,
+                symbol_count,
+            },
+            string_table,
+            extended_index_table.as_ref(),
+            warnings,
+        )?;
         symbol_tables.push(SymbolTable {
-            section_index: table_index,
+            section_index: Some(table_index),
             is_dynamic,
             offset: section.offset,
             address: section.address,
@@ -594,31 +542,155 @@ pub fn parse_symbols(bytes: &[u8], policy: ParsePolicy) -> Result<ElfSymbols<'_>
             entry_size: section.entry_size,
             symbol_count,
             string_table,
+            string_table_index,
             extended_index_table,
             symbols,
         });
     }
-
-    Ok(ElfSymbols {
-        sections,
-        string_tables,
-        symbol_tables,
-        warnings,
-    })
+    Ok(symbol_tables)
 }
 
-/// `ElfStringTable.readString` with Ghidra's sign-extended `st_name`.
-fn read_string<'a>(
+/// Where one table's records are. `id` names the table in errors: its section
+/// index, or [`NO_SECTION`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableLayout {
+    pub id: u32,
+    pub offset: u64,
+    pub entry_size: u64,
+    /// Java's `(int) (length / entrySize)`; negative decodes nothing.
+    pub symbol_count: i32,
+}
+
+/// The table id used in errors for a symbol table with no section.
+pub const NO_SECTION: u32 = u32::MAX;
+
+/// `ElfSymbolTable`'s record loop and name reads. In strict mode the caller must
+/// already have checked that `string_table` lies inside the file.
+pub fn decode_symbols<'a>(
+    bytes: &'a [u8],
+    policy: ParsePolicy,
+    sections: &SectionHeaders<'a>,
+    layout: TableLayout,
+    string_table: Option<StringTable>,
+    extended_index_table: Option<&ExtendedIndexTable>,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<Symbol<'a>>, ErrorKind> {
+    let header = *sections.header();
+    let bits = header.class_bits;
+    let little = header.header_little_endian;
+    let strict = policy == ParsePolicy::Strict;
+    let table_index = layout.id;
+    let decoded = layout.symbol_count.max(0) as u32;
+    let last_field = if bits == 64 { 16 } else { 14 };
+    let mut symbols = Vec::with_capacity(decoded as usize);
+    for symbol in 0..decoded {
+        let position = (layout.offset as i64)
+            .wrapping_add((layout.entry_size as i64).wrapping_mul(i64::from(symbol)));
+        if position < 0 || position > i64::MAX - last_field {
+            return Err(ErrorKind::InvalidSymbolOffset {
+                section: table_index,
+                symbol,
+            });
+        }
+        let record = padded::<24>(bytes, position as u64);
+        let (name_index, value, size, info, other, section_index) = if bits == 64 {
+            (
+                u32_at(&record, 0, little),
+                u64_at(&record, 8, little),
+                u64_at(&record, 16, little),
+                record[4],
+                record[5],
+                u16_at(&record, 6, little),
+            )
+        } else {
+            (
+                u32_at(&record, 0, little),
+                u64::from(u32_at(&record, 4, little)),
+                u64::from(u32_at(&record, 8, little)),
+                record[12],
+                record[13],
+                u16_at(&record, 14, little),
+            )
+        };
+        let mut value = Symbol {
+            index: symbol,
+            name: None,
+            name_index,
+            value,
+            size,
+            info,
+            other,
+            section_index,
+            extended_section_index: 0,
+        };
+        if name_index == 0
+            && value.symbol_type() == STT_SECTION
+            && section_index < SHN_LORESERVE
+            && usize::from(section_index) < sections.len()
+        {
+            value.name = sections.name(usize::from(section_index));
+        }
+        if section_index == SHN_XINDEX
+            && let Some(table) = extended_index_table
+            && let Some(&entry) = table.entries.get(symbol as usize)
+        {
+            value.extended_section_index = entry;
+        }
+        symbols.push(value);
+    }
+
+    // Ghidra reads names sorted by signed st_name; warnings follow that order.
+    if let Some(strings) = string_table {
+        let mut order: Vec<u32> = (0..decoded).collect();
+        order.sort_by_key(|&i| symbols[i as usize].name_index as i32);
+        for i in order {
+            let symbol = &symbols[i as usize];
+            if symbol.name.is_some() {
+                continue;
+            }
+            let name = if strict {
+                let end = strings.offset + strings.size;
+                let start = strings.offset + u64::from(symbol.name_index);
+                if u64::from(symbol.name_index) >= strings.size {
+                    return Err(ErrorKind::NameOutOfBounds {
+                        section: table_index,
+                        symbol: i,
+                    });
+                }
+                if !bytes[start as usize..end as usize].contains(&0) {
+                    return Err(ErrorKind::UnterminatedName {
+                        section: table_index,
+                        symbol: i,
+                    });
+                }
+                Some(java_trim(java_utf8_lossy(c_string(bytes, start))))
+            } else {
+                read_string(
+                    bytes,
+                    strings,
+                    i64::from(symbol.name_index as i32),
+                    warnings,
+                )
+            };
+            symbols[i as usize].name = name;
+        }
+    }
+    Ok(symbols)
+}
+
+/// `ElfStringTable.readString`: `None` for a table at a negative offset, and a
+/// warning plus `None` for a read outside the table. Symbol names pass the
+/// sign-extended `st_name`.
+pub fn read_string<'a>(
     bytes: &'a [u8],
     table: StringTable,
-    name_index: u32,
+    offset: i64,
     warnings: &mut Vec<String>,
 ) -> Option<Cow<'a, str>> {
     let start = table.offset as i64;
     if start < 0 {
         return None;
     }
-    let offset = i64::from(name_index as i32);
     let absolute = start.wrapping_add(offset);
     if offset >= table.size as i64 || absolute < 0 {
         warnings.push(format!(
@@ -698,10 +770,10 @@ mod tests {
             let parsed = parse_symbols(&bytes, policy).unwrap();
             assert_eq!(parsed.string_tables.len(), 2);
             let table = &parsed.symbol_tables[0];
-            assert_eq!(table.section_index, 2);
+            assert_eq!(table.section_index, Some(2));
             assert!(!table.is_dynamic);
             assert_eq!(table.symbol_count, 4);
-            assert_eq!(table.string_table.unwrap().section_index, 3);
+            assert_eq!(table.string_table.unwrap().section_index, Some(3));
             let names: Vec<_> = table.symbols.iter().map(|s| s.name.as_deref()).collect();
             assert_eq!(names, [Some(""), Some("main"), Some(".text"), Some("data")]);
             assert_eq!(table.symbols[1].bind(), 1);

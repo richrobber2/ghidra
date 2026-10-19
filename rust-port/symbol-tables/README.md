@@ -34,9 +34,9 @@ zero-fills tables past EOF, so file size alone would not bound the work.
 The reference is the original `ElfHeader` constructor, `parseSectionHeaders()`, and
 the private `parseStringTables()` and `parseSymbolTables()` methods, with no
 dynamic table parsed. So symbol and string tables found only through `DT_SYMTAB`,
-`DT_STRTAB` and the hash tables are out of scope; they belong with the dynamic
-table slice. Within that boundary, compatibility mode matches Ghidra on these
-points:
+`DT_STRTAB` and the hash tables are out of scope here; the
+[dynamic-table parser](../dynamic-table/README.md) handles them. Within that boundary,
+compatibility mode matches Ghidra on these points:
 
 - Every `SHT_STRTAB` section is a string table. A symbol table's string table is
   the first one at the same file offset as its `sh_link` section, which need not
