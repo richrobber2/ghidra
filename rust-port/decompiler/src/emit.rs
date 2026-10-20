@@ -107,16 +107,14 @@ impl Context<'_> {
                 image.locate_pointer(address)
             }
             .map_err(|e| format!("RIP-relative relocation/global-memory: {e}"))?;
-            let local = if let Some(i) = self.used.iter().position(|id| *id == location.object) {
-                i + 1
-            } else {
-                self.used.push(location.object);
-                self.used.len()
-            };
+            let local = self.local(location.object);
             return Ok(format!(
                 "rg_image(&s,{local},{})",
                 self.constant(location.offset)
             ));
+        }
+        if let Some(address) = self.absolute_load(m, access && !store, state) {
+            return Ok(address);
         }
         if access && !provenance::memory_admissible(m, state) {
             return Err(
@@ -130,6 +128,49 @@ impl Context<'_> {
             m.scale,
             self.constant(m.disp as u64)
         ))
+    }
+    fn local(&mut self, object: u32) -> usize {
+        if let Some(i) = self.used.iter().position(|id| *id == object) {
+            i + 1
+        } else {
+            self.used.push(object);
+            self.used.len()
+        }
+    }
+    /// A load through an absolute displacement in an ET_EXEC image, `disp`,
+    /// `disp(reg)` or `disp(,reg,scale)` with at most one register, when
+    /// `disp` lies in a read-only object. The object is chosen by `disp`; the
+    /// runtime requires the register to be a number and bounds-checks the
+    /// final offset inside that object, so the read is the one the process
+    /// makes at the same address. Anything else (LEA arithmetic, stores, PIE
+    /// images, possible pointer registers, two registers, displacements
+    /// outside the image) keeps the ordinary model, which rejects external
+    /// memory.
+    fn absolute_load(&mut self, m: &Memory, load: bool, state: &[u8; 16]) -> Option<String> {
+        let image = self.image.ok()?;
+        let register = match (m.base, m.index) {
+            (Some(_), Some(_)) => return None,
+            (Some(base), None) => Some((base, 1)),
+            (None, index) => index.map(|index| (index, m.scale)),
+        };
+        if !load
+            || !image.fixed_addresses()
+            || register.is_some_and(|(r, _)| state[r as usize] & provenance::POINTER != 0)
+        {
+            return None;
+        }
+        let address = m.disp as u64;
+        let location = match register {
+            None => image.locate(address, u64::from(m.width / 8)),
+            Some(_) => image.locate_pointer(address),
+        }
+        .ok()?;
+        let local = self.local(location.object);
+        let base = format!("rg_image(&s,{local},{})", self.constant(location.offset));
+        Some(match register {
+            None => base,
+            Some((r, scale)) => format!("rg_lea_from(&s,{base},{r},{scale})"),
+        })
     }
     fn read(&mut self, o: &Operand, state: &[u8; 16]) -> Result<String, String> {
         Ok(match o {

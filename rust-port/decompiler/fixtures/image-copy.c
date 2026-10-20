@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* An executable whose references to libc's optind and stderr give it
- * R_X86_64_COPY relocations. lookup and mix read only .rodata and must
- * decompile; readopt reads the copied variable and must be rejected. */
+ * R_X86_64_COPY relocations. lookup, mix and unchecked read only .rodata and
+ * must decompile; readopt reads the copied variable and must be rejected.
+ * Built without -fpic, the table reads use absolute addresses. unchecked has
+ * no index mask, so its reads leave the table. */
 #include <getopt.h>
 #include <stdio.h>
 
@@ -13,9 +15,11 @@ __attribute__((noinline)) unsigned long mix(unsigned long a, unsigned long b) {
     return table[a & 15] * 256 + table[b & 15];
 }
 
+__attribute__((noinline)) unsigned long unchecked(unsigned long i) { return table[i]; }
+
 __attribute__((noinline)) unsigned long readopt(void) { return (unsigned long)optind; }
 
 int main(int argc, char **argv) {
     fprintf(stderr, "%d", optind);
-    return (int)lookup(argc) + (int)mix(argc, 2) + (int)readopt() + (argv[0] != 0);
+    return (int)lookup(argc) + (int)mix(argc, 2) + (int)readopt() + (int)unchecked(1) + (argv[0] != 0);
 }

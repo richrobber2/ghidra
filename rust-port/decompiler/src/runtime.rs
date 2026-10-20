@@ -152,12 +152,7 @@ pub fn rg_setreg(s: &mut RgState, n: usize, w: u32, high: u32, v: RgValue) {
         s.r[n].p = 2;
     }
 }
-pub fn rg_lea(s: &RgState, base: i32, index: i32, scale: u32, disp: u64) -> RgValue {
-    let a = if base < 0 {
-        rg_const(0)
-    } else {
-        s.r[base as usize]
-    };
+pub fn rg_lea_value(s: &RgState, a: RgValue, index: i32, scale: u32, disp: u64) -> RgValue {
     let b = if index < 0 {
         rg_const(0)
     } else {
@@ -173,6 +168,19 @@ pub fn rg_lea(s: &RgState, base: i32, index: i32, scale: u32, disp: u64) -> RgVa
         k: u64::MAX,
         p: if a.p != 0 { a.p } else { b.p },
     }
+}
+pub fn rg_lea(s: &RgState, base: i32, index: i32, scale: u32, disp: u64) -> RgValue {
+    let a = if base < 0 {
+        rg_const(0)
+    } else {
+        s.r[base as usize]
+    };
+    rg_lea_value(s, a, index, scale, disp)
+}
+// An absolute ET_EXEC displacement plus a scaled index: the image object comes
+// from the displacement, never from the index.
+pub fn rg_lea_from(s: &RgState, image: RgValue, index: i32, scale: u32) -> RgValue {
+    rg_lea_value(s, image, index, scale, 0)
 }
 pub fn rg_slot(address: RgValue, w: u32) -> usize {
     let _ = rg_mask(w);

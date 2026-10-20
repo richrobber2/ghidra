@@ -109,17 +109,34 @@ allocated, file-mapped `.dynsym` (with `DT_SYMENT` 24 when present) and the symb
 index must lie inside it. Android packed tables, unknown relocation formats or
 dynamic tags make the image model unavailable; scalar functions still work.
 
-`review/image_copy.py` links `fixtures/image-copy.c` as a PIE and as a
-position-dependent executable, each with COPY relocations for libc's `optind` and
-`stderr`. It requires the two `.rodata` readers to decompile in C and Rust and
-match independent formulas on 320 vectors, and the function that reads the copied
-`optind` to be rejected. On this branch it passes; before this change both readers
-were rejected. Over 2,002 system ELF files the image model now builds for the 36
-that COPY blocked, and no surviving object overlaps any of their 162 COPY writes
-as `readelf` reports them; every other file builds the same number of objects or fails
-with the same error as before.
+In an ET_EXEC image, whose addresses are fixed at link time, a load through an
+absolute displacement (`disp`, `disp(reg)` or `disp(,reg,scale)`, at most one
+register) also reads image memory when `disp` lies in a read-only object. The
+object is chosen by `disp` alone; the runtime requires the register to hold a
+number (never a pointer) and bounds-checks the final offset inside that object,
+which is the read the process makes at the same address. This is how code built
+without `-fpic` reads tables. ET_DYN code, LEA arithmetic, stores, two registers
+and displacements outside the image keep the ordinary model.
 
-A raw numeric VMA never becomes a pointer. Image pointers retain an object ID and
+`review/image_copy.py` links `fixtures/image-copy.c` three ways, each with COPY
+relocations for libc's `optind` and `stderr`: as a PIE, as a position-dependent
+`-fpie` executable (RIP-relative reads) and as a `-fno-pic` executable (absolute
+reads). The three `.rodata` readers must decompile in C and Rust and match
+independent results on 553 vectors: two against table formulas, and one with no
+index mask against the bytes the file maps at `table + i`, aborting exactly
+where that address leaves the segment. The function that reads the copied
+`optind` must be rejected. On this branch it passes. Over 2,002 system ELF files
+the image model now builds for the 36 that COPY blocked, and no surviving object
+overlaps any of their 162 COPY writes as `readelf` reports them; every other file
+builds the same number of objects or fails with the same error as before. Over all
+43 system ET_EXEC files and 326 ET_DYN files, absolute loads add two functions
+(`PyToken_OneChar` in python3.11 and `_PyToken_OneChar` in python3.13, whose
+generated C and Rust match Python's own `token` table on all 256 characters);
+no function was lost, and the other 367 files give identical output apart from the
+embedded runtime.
+
+A raw numeric VMA never becomes a pointer except as such an absolute ET_EXEC load
+address. Image pointers retain an object ID and
 offset; loads require the entire access inside that object, stores stay stack
 only, and partial pointer spills/bitwise operations remain guarded. Pointer
 arithmetic leaves flags unknown; same-object pointer CMP establishes equality

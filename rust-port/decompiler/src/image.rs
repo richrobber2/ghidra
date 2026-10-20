@@ -47,6 +47,7 @@ pub struct ImageLocation {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImageModel {
     regions: Vec<ImageRegion>,
+    fixed_addresses: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -222,7 +223,16 @@ impl ImageModel {
                 bytes,
             });
         }
-        Ok(Self { regions })
+        Ok(Self {
+            regions,
+            fixed_addresses: image.fixed_addresses(),
+        })
+    }
+
+    /// Whether absolute (non-RIP) displacements name image addresses: true
+    /// only for ET_EXEC, whose load addresses are fixed.
+    pub fn fixed_addresses(&self) -> bool {
+        self.fixed_addresses
     }
 
     pub fn regions(&self) -> &[ImageRegion] {
@@ -827,6 +837,49 @@ mod tests {
         put64(&mut bytes, 1120, 9);
         put64(&mut bytes, 1128, 24);
         bytes
+    }
+
+    #[test]
+    fn absolute_loads_name_image_objects_only_in_fixed_executables() {
+        use crate::emit::{ReturnKind, emit_c_with_image};
+        use crate::lift::lift_function;
+        let emit = |code: &[u8], elf_type: u16| {
+            let mut bytes = fixture();
+            put16(&mut bytes, 16, elf_type);
+            let image = ElfImage::parse(&bytes).unwrap();
+            let model = ImageModel::build(&image).unwrap();
+            assert_eq!(model.fixed_addresses(), elf_type == 2);
+            let lifted = lift_function(code, 0x400000).unwrap();
+            emit_c_with_image(&lifted, "f", Ok(&model), ReturnKind::U64).map(|out| out.c)
+        };
+        // movzbl 0x500200(%rdi),%eax; ret
+        let indexed = [0x0f, 0xb6, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        let c = emit(&indexed, 2).unwrap();
+        assert!(c.contains("rg_lea_from(&s,rg_image(&s,1,UINT64_C(0x0)),7,1)"));
+        // ET_DYN code can only name its image RIP-relatively.
+        assert!(emit(&indexed, 3).unwrap_err().contains("external memory"));
+        // movzbl 0x500200(,%rdi,4),%eax; ret
+        let scaled = [0x0f, 0xb6, 0x04, 0xbd, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&scaled, 2).unwrap().contains(",7,4)"));
+        // mov 0x500200,%rax; ret (no register): a whole-width bounded read.
+        let direct = [0x48, 0x8b, 0x04, 0x25, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(
+            emit(&direct, 2)
+                .unwrap()
+                .contains("rg_load(&s,rg_image(&s,1,UINT64_C(0x0)),64)")
+        );
+        // Outside the image, two registers, stores and LEA keep the old model.
+        let outside = [0x0f, 0xb6, 0x87, 0x00, 0x00, 0x70, 0x00, 0xc3];
+        assert!(emit(&outside, 2).unwrap_err().contains("external memory"));
+        // movzbl 0x500200(%rdi,%rsi),%eax
+        let two = [0x0f, 0xb6, 0x84, 0x37, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&two, 2).unwrap_err().contains("external memory"));
+        // mov %al,0x500200(%rdi)
+        let store = [0x88, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&store, 2).is_err());
+        // lea 0x500200(%rdi),%rax stays arithmetic on a number.
+        let lea = [0x48, 0x8d, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(!emit(&lea, 2).unwrap().contains("rg_image(&s"));
     }
 
     #[test]

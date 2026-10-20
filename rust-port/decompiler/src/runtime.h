@@ -81,11 +81,18 @@ static void rg_setreg(rg_state *s,unsigned n,unsigned w,unsigned high,rg_value v
     s->r[n].k=(s->r[n].k&~mask)|((v.k<<shift)&mask);
     if(s->r[n].p || v.p) s->r[n].p=2;
 }
-static rg_value rg_lea(rg_state *s,int base,int index,unsigned scale,uint64_t disp) {
-    rg_value a=base<0?rg_const(0):s->r[base];
+static rg_value rg_lea_value(rg_state *s,rg_value a,int index,unsigned scale,uint64_t disp) {
     rg_value b=index<0?rg_const(0):s->r[index];
     if(a.p==2 || b.p==2 || (a.p && b.p) || (b.p && scale!=1)) rg_fail();
     return (rg_value){rg_need(a,64)+rg_need(b,64)*scale+disp,UINT64_MAX,a.p?a.p:b.p};
+}
+static rg_value rg_lea(rg_state *s,int base,int index,unsigned scale,uint64_t disp) {
+    return rg_lea_value(s,base<0?rg_const(0):s->r[base],index,scale,disp);
+}
+/* An absolute ET_EXEC displacement plus a scaled index: the image object comes
+   from the displacement, never from the index. */
+static rg_value rg_lea_from(rg_state *s,rg_value image,int index,unsigned scale) {
+    return rg_lea_value(s,image,index,scale,0);
 }
 static unsigned rg_slot(rg_value address,unsigned w) {
     (void)rg_mask(w);

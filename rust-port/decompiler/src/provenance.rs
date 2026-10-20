@@ -16,7 +16,7 @@ pub const STACK: u8 = 2;
 pub const IMAGE: u8 = 4;
 pub const UNKNOWN: u8 = 8;
 pub const INVALID: u8 = 16;
-const POINTER: u8 = STACK | IMAGE;
+pub const POINTER: u8 = STACK | IMAGE;
 const KINDS: [u8; 5] = [NUM, STACK, IMAGE, UNKNOWN, INVALID];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
