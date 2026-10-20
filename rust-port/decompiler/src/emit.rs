@@ -627,6 +627,7 @@ mod tests {
 
     /// The Rust runtime compiles inside this crate too, so its semantics can
     /// be unit-tested directly.
+    #[allow(dead_code)]
     mod runtime {
         include!("runtime.rs");
 

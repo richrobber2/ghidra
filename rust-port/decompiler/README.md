@@ -103,8 +103,21 @@ relocation writes and loader bookkeeping exclude entire intersecting objects.
 Dynamic REL/RELA/RELR metadata must be bounded, file-mapped and covered by validated
 allocated relocation sections. RELR tables are decoded with the
 [relocation-table parser](../relocation-tables/README.md), each entry an 8-byte
-relative write. Android packed tables, COPY, unknown relocation formats or dynamic
-tags make the image model unavailable; scalar functions still work.
+relative write. An `R_X86_64_COPY` write covers `st_size` bytes of its symbol,
+read from the dynamic symbol table: `DT_SYMTAB` must be the start of the one
+allocated, file-mapped `.dynsym` (with `DT_SYMENT` 24 when present) and the symbol
+index must lie inside it. Android packed tables, unknown relocation formats or
+dynamic tags make the image model unavailable; scalar functions still work.
+
+`review/image_copy.py` links `fixtures/image-copy.c` as a PIE and as a
+position-dependent executable, each with COPY relocations for libc's `optind` and
+`stderr`. It requires the two `.rodata` readers to decompile in C and Rust and
+match independent formulas on 320 vectors, and the function that reads the copied
+`optind` to be rejected. On this branch it passes; before this change both readers
+were rejected. Over 2,002 system ELF files the image model now builds for the 36
+that COPY blocked, and no surviving object overlaps any of their 162 COPY writes
+as `readelf` reports them; every other file builds the same number of objects or fails
+with the same error as before.
 
 A raw numeric VMA never becomes a pointer. Image pointers retain an object ID and
 offset; loads require the entire access inside that object, stores stay stack
