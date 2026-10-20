@@ -46,7 +46,8 @@ the existing Rust toolchain and run `cargo fetch --locked --manifest-path
 /workspace/ghidra-rust-port/decompiler/Cargo.toml` before the offline build.
 
 `functions` inventories defined ELF function symbols, preserving aliases and
-zero-size entries. `decompile` emits `manifest.json`, `ir.json` and `decompiled.c`.
+zero-size entries. `decompile` emits `manifest.json`, `ir.json` and `decompiled.c`;
+`--lang rust` writes `decompiled.rs` instead and `--lang both` writes both.
 For a stripped binary use `--address 0xVMA --size N` instead of a name; the tool
 requires an explicit extent and does not guess function boundaries. `analyze`
 attempts symbol-discovered function extents and writes combined C plus per-function
@@ -63,7 +64,7 @@ coverage or a function limit returns 1 and stays visible as `status:partial` and
 | State | 8/16/32/64-bit aliases including AH; 32-bit zero extension; modeled CF/PF/ZF/SF/OF and undefined-flag guards; bounded stack locals and saved registers |
 | Memory | Validated file-backed read-only PT_LOAD objects, RIP-relative addresses/loads, indexed integer loads, full-width pointer spills, same-object subtraction and explicit pointer results |
 | Control flow | Reachable direct branches, loops, byte-ownership overlap checks, explicit labels in generated C |
-| Output | Guarded machine-level GNU C11 using `uint64_t` and `__int128`; no inline assembly or calls back into the original engine |
+| Output | Guarded machine-level GNU C11 using `uint64_t` and `__int128`, or the same guards as edition-2024 Rust (`--lang rust`); no inline assembly or calls back into the original engine |
 
 An unsupported reachable instruction rejects the whole function and produces no
 C for it. Calls, writable/global state, external pointer arguments, indirect branches,
@@ -71,6 +72,20 @@ SIMD/floating point, atomics, exceptions, other ABIs/architectures, relocated da
 DWARF recovery and structured variable/type/loop reconstruction remain outside
 this version. It does not implement Ghidra's SSA/p-code optimization pipeline or
 GUI. These are explicit remaining parity gaps, not silently substituted features.
+
+## Rust output
+
+`--lang rust` (for `decompile` and `analyze`) emits the same lifted functions as
+Rust instead of C. Both backends share the IR, the support checks and the guard
+model, so a function is either accepted by both or rejected by both. Each
+function is a `#[unsafe(no_mangle)] pub extern "C" fn` taking six `u64`
+arguments, with the control flow as a `loop { match pc { ... } }` state machine
+over block addresses. `src/runtime.rs` is a line-for-line port of `runtime.h`
+(known bits, stack and image-object provenance, flags, an 8192-byte stack) and is
+embedded at the top of `decompiled.rs`, so the file builds on its own with
+`rustc --edition 2024 --crate-type cdylib -C panic=abort -D warnings`. Image
+bytes become `static` arrays. A guard failure calls `std::process::abort`, as
+the C `rg_fail` does. The default output is still C, byte-identical to before.
 
 ## Meaning of guarded C
 
@@ -85,9 +100,11 @@ to make a function return a plausible value.
 Read-only objects contain the file-backed bytes of nonwritable readable load
 segments, using a conservative x86-64 4096-byte mapping-page contract. Page aliases,
 relocation writes and loader bookkeeping exclude entire intersecting objects.
-Dynamic REL/RELA metadata must be bounded, file-mapped and covered by validated
-allocated relocation sections. Packed/RELR, COPY, unknown relocation formats or
-dynamic tags make the image model unavailable; scalar functions still work.
+Dynamic REL/RELA/RELR metadata must be bounded, file-mapped and covered by validated
+allocated relocation sections. RELR tables are decoded with the
+[relocation-table parser](../relocation-tables/README.md), each entry an 8-byte
+relative write. Android packed tables, COPY, unknown relocation formats or dynamic
+tags make the image model unavailable; scalar functions still work.
 
 A raw numeric VMA never becomes a pointer. Image pointers retain an object ID and
 offset; loads require the entire access inside that object, stores stay stack
@@ -124,6 +141,15 @@ remain in new result directories. Original Ghidra is a differential inspection
 reference; it is not used to execute this Rust pipeline. See `review/` for the
 suite drivers and semantic review. Heavy builds, executions, Ghidra imports and
 audits run serially.
+
+`review/validate.py --rustc rustc` adds a third arm that compiles the generated
+Rust and checks it against the same formulas. `review/rust_backend.py` runs
+`analyze --lang both` over real libraries, compiles both outputs and calls each
+function on the same 112 vectors (each in its own child), requiring the same
+result or the same guard abort. On this branch validate.py passed 42/42
+functions and 18/18 rejects with the Rust arm on 523 vectors, and
+rust_backend.py matched 87/87 functions from libc, libm, libz, liblzma and eight
+other inputs, including 6 that read image memory and 2,240 matching aborts.
 
 The next stage is call/prototype modeling, followed by SSA/data-flow optimization
 and structured C recovery. Each needs an explicit

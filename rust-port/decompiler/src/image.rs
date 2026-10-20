@@ -5,8 +5,11 @@
 //!
 //! This deliberately does not relocate an ELF or emulate its dynamic linker.
 //! Unknown relocation formats/tags fail closed, independently of scalar lifting.
+//! RELR tables are decoded with `ghidra-elf-relocations`; Android packed
+//! tables still fail closed.
 
 use crate::elf::ElfImage;
+use ghidra_elf_relocations::decode_relr;
 
 pub const MAX_IMAGE_OBJECTS: usize = 128;
 pub const MAX_IMAGE_OBJECT_BYTES: usize = 4 * 1024 * 1024;
@@ -108,15 +111,16 @@ impl ImageModel {
         for (index, section) in image.sections().iter().enumerate() {
             if matches!(
                 section.section_type,
-                SHT_RELR | 0x6000_0001 | 0x6000_0002 | 0x6fff_ff00
+                0x6000_0001 | 0x6000_0002 | 0x6fff_ff00
             ) {
                 return Err(format!(
-                    "relocation section {index} uses unsupported packed/RELR encoding"
+                    "relocation section {index} uses unsupported packed encoding"
                 ));
             }
             let stride = match section.section_type {
                 SHT_RELA => 24,
                 SHT_REL => 16,
+                SHT_RELR => 8,
                 _ => continue,
             };
             if section.entry_size != stride || section.size % stride != 0 {
@@ -124,8 +128,21 @@ impl ImageModel {
                     "relocation section {index} requires complete {stride}-byte entries"
                 ));
             }
+            let count = if section.section_type == SHT_RELR {
+                if section.size == 0 {
+                    return Err(format!("relocation section {index} is an empty RELR table"));
+                }
+                relr_count(file_slice(
+                    image.file_bytes(),
+                    section.offset,
+                    section.size,
+                    "relocation section",
+                )?)
+            } else {
+                section.size / stride
+            };
             relocation_count = relocation_count
-                .checked_add(section.size / stride)
+                .checked_add(count)
                 .ok_or("relocation count overflows")?;
             if relocation_count > MAX_RELOCATION_ENTRIES {
                 return Err(format!("relocation count exceeds {MAX_RELOCATION_ENTRIES}"));
@@ -143,7 +160,8 @@ impl ImageModel {
 
         validate_dynamic(image, &mut candidates)?;
         for section in image.sections() {
-            if !matches!(section.section_type, SHT_REL | SHT_RELA) || section.flags & SHF_ALLOC == 0
+            if !matches!(section.section_type, SHT_REL | SHT_RELA | SHT_RELR)
+                || section.flags & SHF_ALLOC == 0
             {
                 continue;
             }
@@ -153,6 +171,13 @@ impl ImageModel {
                 section.size,
                 "relocation section",
             )?;
+            if section.section_type == SHT_RELR {
+                // Every RELR entry is an R_X86_64_RELATIVE word.
+                for address in decode_relr(entries, true, true) {
+                    block_span(&mut candidates, address, 8, "relocation write")?;
+                }
+                continue;
+            }
             for raw in entries.chunks_exact(section.entry_size as usize) {
                 let address = u64_at(raw, 0);
                 let kind = u64_at(raw, 8) as u32;
@@ -281,6 +306,23 @@ fn block_span(
 
 // System V AMD64 relocation storage widths. COPY depends on a symbol size,
 // unknown extensions might write more bytes, and both therefore fail closed.
+/// The exact relocation count of a RELR table, without decoding it: the first
+/// and every even word is one address, an odd word one per set bitmap bit.
+fn relr_count(bytes: &[u8]) -> u64 {
+    bytes
+        .chunks_exact(8)
+        .enumerate()
+        .map(|(index, raw)| {
+            let word = u64_at(raw, 0);
+            if index == 0 || word & 1 == 0 {
+                1
+            } else {
+                u64::from((word >> 1).count_ones())
+            }
+        })
+        .sum()
+}
+
 fn relocation_width(kind: u32) -> Result<u64, String> {
     match kind {
         0 | 35 => Ok(0), // NONE, TLSDESC_CALL marker.
@@ -309,6 +351,9 @@ struct DynamicRelocations {
     pltrel: Option<u64>,
     relacount: Option<u64>,
     relcount: Option<u64>,
+    relr: Option<u64>,
+    relrsz: Option<u64>,
+    relrent: Option<u64>,
 }
 
 fn set_once(slot: &mut Option<u64>, value: u64, name: &str) -> Result<(), String> {
@@ -380,8 +425,11 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
                 0x6fff_fffa => set_once(&mut dynamic.relcount, value, "DT_RELCOUNT")?,
                 22 => return Err("DT_TEXTREL image memory is unsupported".into()),
                 30 if value & 4 != 0 => return Err("DF_TEXTREL image memory is unsupported".into()),
-                35..=37 | 0x6000_000f..=0x6000_0012 | 0x6fff_e000 | 0x6fff_e001 | 0x6fff_e003 => {
-                    return Err("packed/RELR dynamic relocations are unsupported".into());
+                35 => set_once(&mut dynamic.relrsz, value, "DT_RELRSZ")?,
+                36 => set_once(&mut dynamic.relr, value, "DT_RELR")?,
+                37 => set_once(&mut dynamic.relrent, value, "DT_RELRENT")?,
+                0x6000_000f..=0x6000_0012 | 0x6fff_e000 | 0x6fff_e001 | 0x6fff_e003 => {
+                    return Err("packed/Android RELR dynamic relocations are unsupported".into());
                 }
                 // Ordinary ELF and GNU metadata which does not add a new
                 // relocation encoding. Everything else fails closed.
@@ -396,6 +444,9 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
                 | 0x6fff_fff9..=0x6fff_ffff
                 | 0x7fff_fffd
                 | 0x7fff_ffff => {}
+                // DT_X86_64_PLT, PLTSZ and PLTENT (-z mark-plt) only describe
+                // the PLT's extent; they add no relocation encoding.
+                0x7000_0000 | 0x7000_0001 | 0x7000_0003 => {}
                 _ => {
                     return Err(format!(
                         "unsupported dynamic tag 0x{tag:x} for static image memory"
@@ -408,11 +459,16 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
         }
         if dynamic.relaent.is_some_and(|entry| entry != 24)
             || dynamic.relent.is_some_and(|entry| entry != 16)
+            || dynamic.relrent.is_some_and(|entry| entry != 8)
         {
             return Err("dynamic relocation entry size is noncanonical".into());
         }
         validate_dynamic_table(image, dynamic.rela, dynamic.relasz, SHT_RELA, "DT_RELA")?;
         validate_dynamic_table(image, dynamic.rel, dynamic.relsz, SHT_REL, "DT_REL")?;
+        if dynamic.relr.is_some() && dynamic.relrent.is_none() {
+            return Err("DT_RELR requires DT_RELRENT".into());
+        }
+        validate_dynamic_table(image, dynamic.relr, dynamic.relrsz, SHT_RELR, "DT_RELR")?;
         validate_relative_prefix(
             image,
             dynamic.rela,
@@ -496,7 +552,11 @@ fn validate_dynamic_table(
         (Some(address), Some(size)) => (address, size),
         _ => return Err(format!("{name} requires both address and size")),
     };
-    let stride = if kind == SHT_RELA { 24 } else { 16 };
+    let stride = match kind {
+        SHT_RELA => 24,
+        SHT_RELR => 8,
+        _ => 16,
+    };
     if size % stride != 0 {
         return Err(format!("{name} size is not a whole relocation entry"));
     }
@@ -811,6 +871,43 @@ mod tests {
         );
     }
 
+    fn relr_fixture(words: &[u64]) -> Vec<u8> {
+        let mut bytes = reloc_fixture(0, 0);
+        let size = 8 * words.len() as u64;
+        section(&mut bytes, 1, SHT_RELR, SHF_ALLOC, 0x600400, 1024, size, 8);
+        for (index, word) in words.iter().enumerate() {
+            put64(&mut bytes, 1024 + 8 * index, *word);
+        }
+        bytes
+    }
+
+    #[test]
+    fn relr_addresses_and_bitmaps_exclude_written_objects() {
+        let regions = |words: &[u64]| {
+            ImageModel::build(&ElfImage::parse(&relr_fixture(words)).unwrap())
+                .unwrap()
+                .regions()
+                .iter()
+                .map(|region| region.address)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(regions(&[0x700000]), [0x400000, 0x500200]);
+        assert_eq!(regions(&[0x500200]), [0x400000]);
+        // Bitmap bit k marks 0x3ffff8 + 8k; bit 2 lands inside the first load.
+        assert_eq!(regions(&[0x3ffff0, 0b1001]), [0x500200]);
+        assert_eq!(regions(&[0x3ffff0, 0b0011]), [0x400000, 0x500200]);
+        let empty = relr_fixture(&[]);
+        assert!(
+            ImageModel::build(&ElfImage::parse(&empty).unwrap())
+                .unwrap_err()
+                .contains("empty RELR")
+        );
+        assert_eq!(relr_count(&[0u8; 8]), 1);
+        let mut words = 0x1000u64.to_le_bytes().to_vec();
+        words.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert_eq!(relr_count(&words), 64);
+    }
+
     #[test]
     fn unknown_copy_packed_malformed_and_overflowing_relocations_fail_closed() {
         for kind in [5, 0xffff] {
@@ -825,11 +922,18 @@ mod tests {
                 .contains("complete")
         );
         let mut bytes = reloc_fixture(8, 0x500200);
+        put32(&mut bytes, 1536 + 64 + 4, 0x6000_0002);
+        assert!(
+            ImageModel::build(&ElfImage::parse(&bytes).unwrap())
+                .unwrap_err()
+                .contains("packed")
+        );
+        let mut bytes = reloc_fixture(8, 0x500200);
         put32(&mut bytes, 1536 + 64 + 4, SHT_RELR);
         assert!(
             ImageModel::build(&ElfImage::parse(&bytes).unwrap())
                 .unwrap_err()
-                .contains("RELR")
+                .contains("8-byte")
         );
         let bytes = reloc_fixture(8, u64::MAX - 3);
         assert!(

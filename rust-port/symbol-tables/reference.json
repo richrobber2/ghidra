@@ -1,0 +1,32 @@
+{
+  "commit": "8f2596c425d6ddfb1824d2a0e23771c5c1e9d749",
+  "pinned_reference_sha256": {
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfHeader.java": "07977505cb2591eb4f47ec0d5eaa7c0aa6eaf1c26736e0d8103c050b7a508b0c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeader.java": "63dcba63077981371355913bb2017056fb2437c6e1c5b7922ddf08ef64fda71c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfCompressedSectionHeader.java": "dd1c1393e209ba10667e1e4d714b5b58fd7a3f61a3f7e035c199ad9503cabef9",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfStringTable.java": "cb9481e50066b64c5c998a742fcb3fb2dcdb52c09bffde1590b4f1d26e8df867",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolTable.java": "362cb819a386654443b980aad1e65cc2b1ffc7831254976438ccce723d8343ff",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbol.java": "efa77781770701fc159ac06681dfb5f6e357ca03654899f8ac9526a206b5204c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSectionHeaderConstants.java": "fb9ae7bc67c98da5114a0cb9e4dd2dc310cbceaecca3637fbb7f8181d14b0775",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/UnlimitedByteProviderWrapper.java": "9c3e67d5a452b56cea1ac4ecdb8d1f5f721888fe96518b1aceb6e161ff737b2f",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/BinaryReader.java": "0821e053a862f18bf7895f2298ffc02ee5809310d8c5faf74af03afb562c3d10",
+    "/workspace/ghidra-rust-port/Cargo.toml": "006b0b9a7e20bf8eed366b804ccaaabc936f089b41dd88e7fadb68f278c8c022",
+    "/workspace/ghidra-rust-port/src/lib.rs": "df0256f7a5769c8f995c3dc5db44df55678e33812080e6e15da6b3085d1a9acd",
+    "/workspace/ghidra-rust-port/section-headers/Cargo.toml": "f26c085ce58b1c7eebdc910821fc35f7f3c34377f588658b1047faad1d08d5c5",
+    "/workspace/ghidra-rust-port/section-headers/src/lib.rs": "e6fd6ccd5ae60661601ac1d655f64ae346198f27717296d19669e896eac22349"
+  },
+  "boundary": {
+    "header": "ElfHeader(ByteProvider, Consumer<String>)",
+    "sections": "ElfHeader.parseSectionHeaders()",
+    "tables": "private ElfHeader.parseStringTables() and parseSymbolTables() with no dynamic table parsed",
+    "records": "ElfStringTable, ElfSymbolTable, ElfSymbol (names read in sorted st_name order, trimmed)",
+    "addresses": "Raw sh_addr; table address getters apply prelink adjustment",
+    "excluded": [
+      "dynamic table and DT_SYMTAB/DT_STRTAB fallback tables",
+      "hash-table symbol counts",
+      "full ElfHeader.parse()",
+      "architecture adapters",
+      "loader integration"
+    ]
+  }
+}

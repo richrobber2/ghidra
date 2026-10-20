@@ -1,0 +1,18 @@
+Ghidra ELF dynamic-table Rust port
+
+This component adapts ElfDynamicTable, ElfDynamic, ElfHeader.parseDynamicTable,
+ElfHeader.parseStringTables, ElfHeader.parseDynamicLibraryNames,
+ElfHeader.parseSymbolTables, the dynamic hash-table symbol counts and the
+PRE-trailer address adjustment from
+Ghidra commit
+9a723ce99952771b8368329503aa589ae233e916. The original Ghidra checkout and the
+prior Rust components remain unchanged. This is not an official release.
+
+Upstream Ghidra notice:
+
+Ghidra
+This product includes software developed at National Security Agency
+(https://www.nsa.gov).
+Portions were created by the U.S. Government and are not subject to U.S.
+copyright protections under 17 U.S.C. Section 105. Remaining portions are
+copyright their respective authors and distributed under applicable licenses.

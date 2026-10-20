@@ -7,7 +7,9 @@
 //! extent of zero-size symbols, recover stripped functions, apply relocations,
 //! or execute the input. An explicit address and size can select stripped code.
 
+use ghidra_elf_sections::parse_section_headers;
 use ghidra_elf_segments::{ParsePolicy, ProgramHeader, parse_program_headers};
+use ghidra_elf_symbols::{ErrorKind as SymbolError, parse_symbols};
 
 pub const MAX_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 pub const MAX_SECTIONS: u32 = 65_536;
@@ -139,20 +141,18 @@ impl<'a> ElfImage<'a> {
         if header.shnum == 0 {
             return Ok(image);
         }
-        let table_size = u64::from(header.shnum)
-            .checked_mul(64)
-            .ok_or("section table size overflows")?;
-        let table = checked_slice(bytes, header.shoff, table_size, "section table")?;
-        let mut sections = Vec::with_capacity(header.shnum as usize);
-        for (index, raw) in table.chunks_exact(64).enumerate() {
+        let table = parse_section_headers(bytes, ParsePolicy::Strict)
+            .map_err(|error| format!("ELF section table: {error}"))?;
+        let mut sections = Vec::with_capacity(table.len());
+        for (index, record) in table.iter().enumerate() {
             let section = Section {
-                section_type: u32_at(raw, 4),
-                flags: u64_at(raw, 8),
-                address: u64_at(raw, 16),
-                offset: u64_at(raw, 24),
-                size: u64_at(raw, 32),
-                link: u32_at(raw, 40),
-                entry_size: u64_at(raw, 56),
+                section_type: record.section_type,
+                flags: record.flags,
+                address: record.address,
+                offset: record.offset,
+                size: record.size,
+                link: record.link,
+                entry_size: record.entry_size,
             };
             if index == 0 && section.section_type != SHT_NULL {
                 return Err("section zero must have SHT_NULL type".into());
@@ -198,8 +198,12 @@ impl<'a> ElfImage<'a> {
             }
         }
 
+        // Resource bounds over declared counts, checked before any symbol is
+        // decoded. Every retained function may inspect every load interval, so
+        // all declared symbols are charged conservatively: a many-table or
+        // many-segment input must not amplify bounded counts into billions of
+        // interval checks. These are wrapper work caps.
         let mut total_symbols = 0u64;
-        let mut total_name_bytes = 0usize;
         for (table_index, section) in sections.iter().enumerate() {
             if !matches!(section.section_type, SHT_SYMTAB | SHT_DYNSYM) {
                 continue;
@@ -209,19 +213,14 @@ impl<'a> ElfImage<'a> {
                     "symbol table {table_index} requires complete 24-byte entries"
                 ));
             }
-            let count = section.size / 24;
             total_symbols = total_symbols
-                .checked_add(count)
+                .checked_add(section.size / 24)
                 .ok_or("symbol count overflows")?;
             if total_symbols > MAX_SYMBOLS {
                 return Err(format!(
                     "total symbol count exceeds resource limit {MAX_SYMBOLS}"
                 ));
             }
-            // Every retained function may inspect every load interval. Charge
-            // all declared symbols conservatively before reading this table;
-            // a many-table/many-segment input must not amplify bounded counts
-            // into billions of interval checks. This is a wrapper work cap.
             let mapping_work = total_symbols
                 .checked_mul(image.loads.len() as u64)
                 .ok_or("symbol mapping work estimate overflows")?;
@@ -229,6 +228,14 @@ impl<'a> ElfImage<'a> {
                 return Err(format!(
                     "declared symbol/load mapping work {mapping_work} exceeds resource limit {MAX_SYMBOL_MAPPING_WORK}"
                 ));
+            }
+        }
+        // Table-level checks also run before decoding, so their messages win
+        // over the symbol parser's for the same defect.
+        let mut string_tables = vec![None; sections.len()];
+        for (table_index, section) in sections.iter().enumerate() {
+            if !matches!(section.section_type, SHT_SYMTAB | SHT_DYNSYM) {
+                continue;
             }
             let string_section = sections.get(section.link as usize).ok_or_else(|| {
                 format!("symbol table {table_index} has invalid string-table link")
@@ -249,35 +256,47 @@ impl<'a> ElfImage<'a> {
                     "symbol table {table_index} requires a NUL-bounded string table"
                 ));
             }
-            let symbols = checked_slice(bytes, section.offset, section.size, "symbol table")?;
-            let indices = match extended_indices[table_index] {
-                Some(index) => {
-                    let extended = sections[index];
-                    if extended.size / 4 != count {
-                        return Err(format!(
-                            "symbol table {table_index} extended-index count does not match"
-                        ));
-                    }
-                    Some(checked_slice(
-                        bytes,
-                        extended.offset,
-                        extended.size,
-                        "extended symbol indices",
-                    )?)
+            checked_slice(bytes, section.offset, section.size, "symbol table")?;
+            string_tables[table_index] = Some(strings);
+        }
+        let parsed =
+            parse_symbols(bytes, ParsePolicy::Strict).map_err(|error| match error.kind {
+                SymbolError::NameOutOfBounds { section, symbol } => {
+                    format!("symbol {section}:{symbol} has out-of-range name offset")
                 }
-                None => None,
+                _ => format!("ELF symbol tables: {error}"),
+            })?;
+        let mut parsed_tables = vec![None; sections.len()];
+        for table in &parsed.symbol_tables {
+            parsed_tables[table.section_index.unwrap() as usize] = Some(table);
+        }
+
+        let mut total_name_bytes = 0usize;
+        for (table_index, section) in sections.iter().enumerate() {
+            let Some(strings) = string_tables[table_index] else {
+                continue;
             };
-            for (symbol_index, raw) in symbols.chunks_exact(24).enumerate() {
-                let name_offset = u32_at(raw, 0) as usize;
+            let count = section.size / 24;
+            let symbols = parsed_tables[table_index]
+                .ok_or_else(|| format!("symbol table {table_index} was not decoded"))?;
+            if let Some(index) = extended_indices[table_index]
+                && sections[index].size / 4 != count
+            {
+                return Err(format!(
+                    "symbol table {table_index} extended-index count does not match"
+                ));
+            }
+            for (symbol_index, symbol) in symbols.symbols.iter().enumerate() {
+                let name_offset = symbol.name_index as usize;
                 if name_offset >= strings.len() {
                     return Err(format!(
                         "symbol {table_index}:{symbol_index} has out-of-range name offset"
                     ));
                 }
-                if raw[4] & 0x0f != 2 {
+                if symbol.symbol_type() != 2 {
                     continue; // STT_FUNC only, not imports, objects or IFUNC resolvers.
                 }
-                let mut section_index = u32::from(u16_at(raw, 6));
+                let mut section_index = u32::from(symbol.section_index);
                 let absolute = section_index == SHN_ABS;
                 if section_index == SHN_UNDEF {
                     continue;
@@ -293,18 +312,17 @@ impl<'a> ElfImage<'a> {
                     ));
                 }
                 if section_index == SHN_XINDEX {
-                    let indices = indices.ok_or_else(|| {
-                        format!(
+                    if extended_indices[table_index].is_none() {
+                        return Err(format!(
                             "function {table_index}:{symbol_index} needs an extended-index table"
-                        )
-                    })?;
-                    section_index = u32_at(indices, symbol_index * 4);
+                        ));
+                    }
+                    section_index = symbol.extended_section_index;
                     if section_index == SHN_UNDEF {
                         continue;
                     }
                 }
-                let address = u64_at(raw, 8);
-                let size = u64_at(raw, 16);
+                let (address, size) = (symbol.value, symbol.size);
                 let end = address.checked_add(size).ok_or_else(|| {
                     format!("function {table_index}:{symbol_index} address extent overflows")
                 })?;
@@ -474,18 +492,6 @@ fn checked_slice<'a>(
     bytes
         .get(start..end)
         .ok_or_else(|| format!("{label} is outside the file"))
-}
-
-fn u16_at(bytes: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
-}
-
-fn u32_at(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
-}
-
-fn u64_at(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap())
 }
 
 #[cfg(test)]

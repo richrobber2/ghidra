@@ -178,11 +178,11 @@ def manifest_status(manifest: dict) -> str:
     return "missing_status"
 
 
-def generated_source(manifest: dict, directory: Path) -> Path:
+def generated_source(manifest: dict, directory: Path, key: str = "decompiled_c") -> Path:
     output_files = manifest.get("output_files", {})
-    candidate = output_files.get("decompiled_c") if isinstance(output_files, dict) else None
+    candidate = output_files.get(key) if isinstance(output_files, dict) else None
     if not candidate:
-        candidate = manifest.get("decompiled_c", "decompiled.c")
+        candidate = manifest.get(key, "decompiled.rs" if key == "decompiled_rust" else "decompiled.c")
     if not isinstance(candidate, str):
         raise ValueError("decompiled C path must be a string")
     path = Path(candidate)
@@ -219,11 +219,14 @@ def run(args: argparse.Namespace) -> int:
     (output / "inputs.json").write_text(json.dumps(vectors) + "\n")
     commands = Commands(output)
     commands.run("compiler-version", [args.cc, "--version"])
+    if args.rustc:
+        commands.run("rustc-version", [args.rustc, "--version"])
     cases, errors = [], []
     summary = {"schema": 1, "status": "running", "scope": config["scope"],
                "input_vectors": len(vectors), "cases": cases, "errors": errors,
                "supported_expected": len(config["supported"]) * len(config["optimization_levels"]),
-               "reject_expected": len(config["must_reject"]) * len(config["optimization_levels"])}
+               "reject_expected": len(config["must_reject"]) * len(config["optimization_levels"]),
+               "rust_backend": bool(args.rustc)}
     try:
         for optimization in config["optimization_levels"]:
             library = output / "original" / f"scalar-{optimization}.so"
@@ -239,8 +242,9 @@ def run(args: argparse.Namespace) -> int:
                         "status": "running"}
                 cases.append(case)
                 directory = output / "decompilations" / f"{optimization}-{name}"
+                language = ["--lang", "both"] if args.rustc else []
                 invocation = commands.run(f"decompile-{optimization}-{name}", [str(frozen_cli), "decompile", str(library),
-                    "--function", name, "--output", str(directory)], timeout=args.decompile_timeout)
+                    "--function", name, *language, "--output", str(directory)], timeout=args.decompile_timeout)
                 case["decompile_command"] = invocation
                 manifest_path = directory / "manifest.json"
                 if invocation["timed_out"] or not manifest_path.is_file():
@@ -251,6 +255,7 @@ def run(args: argparse.Namespace) -> int:
                     if not isinstance(manifest, dict):
                         raise ValueError("manifest must be a JSON object")
                     source = generated_source(manifest, directory)
+                    rust_source = generated_source(manifest, directory, "decompiled_rust") if args.rustc else None
                 except (ValueError, OSError) as exc:
                     case.update(status="invalid_manifest", error=str(exc))
                     continue
@@ -266,7 +271,7 @@ def run(args: argparse.Namespace) -> int:
                 if case["reported_status"] != "ok":
                     case["status"] = "unsupported_expected_supported" if case["reported_status"] == "unsupported" else "decompile_error"
                     continue
-                if not successful(invocation) or not source.is_file():
+                if not successful(invocation) or not source.is_file() or (rust_source and not rust_source.is_file()):
                     case["status"] = "inconsistent_success"
                     continue
                 generated = output / "generated" / f"{optimization}-{name}.so"
@@ -278,10 +283,20 @@ def run(args: argparse.Namespace) -> int:
                 if not successful(compilation):
                     case["status"] = "generated_c_compile_error"
                     continue
+                arms = [("original", library, name), ("generated", generated, manifest.get("generated_function", name))]
+                if rust_source:
+                    rust_library = output / "generated" / f"{optimization}-{name}-rust.so"
+                    rust_compilation = commands.run(f"compile-generated-rust-{optimization}-{name}", [args.rustc,
+                        "--edition", "2024", "-O", "--crate-type", "cdylib", "-C", "panic=abort", "-D", "warnings",
+                        str(rust_source), "-o", str(rust_library)], timeout=120)
+                    case["rust_compile_command"] = rust_compilation
+                    if not successful(rust_compilation):
+                        case["status"] = "generated_rust_compile_error"
+                        continue
+                    arms.append(("generated_rust", rust_library, manifest.get("generated_function", name)))
                 oracle = [expected(name, vector) for vector in vectors]
                 outputs = {}
-                generated_name = manifest.get("generated_function", name)
-                for arm, path, function in (("original", library, name), ("generated", generated, generated_name)):
+                for arm, path, function in arms:
                     execution = commands.run(f"execute-{arm}-{optimization}-{name}", [sys.executable, str(Path(__file__).resolve()), "--worker"],
                         timeout=config["child_timeout_seconds"], payload={"library": str(path), "function": function, "inputs": vectors})
                     case[f"{arm}_command"] = execution
@@ -339,6 +354,7 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="new result directory; existing paths are refused")
     parser.add_argument("--cli", required=True, help="native Rust executable")
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--rustc", help="also generate Rust, compile it with this rustc and check it as a third arm")
     parser.add_argument("--decompile-timeout", type=int, default=30)
     return run(parser.parse_args())
 
