@@ -12,7 +12,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))
-from localenv import GHIDRA, cargo_env, resolve  # noqa: E402
+from localenv import GHIDRA, cargo_env, resolve, tool  # noqa: E402
 COMMIT = '9a723ce99952771b8368329503aa589ae233e916'
 COMMON = ('class_bits', 'header_little_endian', 'phnum', 'phentsize',
           'offsets_rewritten', 'zero_filled_entries', 'entries')
@@ -82,7 +82,7 @@ def main():
             destination = output / 'sources' / f'{index:02d}-{path.name}'
             destination.parent.mkdir(exist_ok=True)
             shutil.copyfile(path, destination)
-        cargo = env['CARGO_HOME'] + '/bin/cargo'
+        cargo = tool('cargo', env)
         base = [cargo, 'test', '--manifest-path', ROOT / 'Cargo.toml', '--offline', '--locked', '--lib']
         run('unit-debug', base)
         run('unit-release', [*base, '--release'])
