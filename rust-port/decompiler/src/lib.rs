@@ -4,6 +4,7 @@
 pub mod elf;
 pub mod emit;
 pub mod lift;
+pub mod plt;
 
 pub mod image;
 pub mod provenance;

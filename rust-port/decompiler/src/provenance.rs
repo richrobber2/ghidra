@@ -131,6 +131,8 @@ fn read(operand: &Operand, state: &State) -> u8 {
             }
         }
         Operand::Mem(memory) => load(memory, state),
+        // The runtime carries the canary as an object of its own.
+        Operand::Canary => IMAGE,
     }
 }
 
@@ -221,7 +223,12 @@ fn transfer(op: &Op, input: State) -> State {
         }
         // The pushed return address is a number.
         Op::Call { .. } => state.stack |= NUM,
-        Op::Compare { .. } | Op::Jump { .. } | Op::Branch { .. } | Op::Return | Op::Nop => {}
+        Op::Compare { .. }
+        | Op::Jump { .. }
+        | Op::Branch { .. }
+        | Op::Return
+        | Op::Abort
+        | Op::Nop => {}
     }
     state
 }
@@ -241,7 +248,7 @@ fn valid_operand(operand: &Operand) -> bool {
     match operand {
         Operand::Reg(r) => valid_reg(*r),
         Operand::Mem(m) => valid_memory(m),
-        Operand::Imm(_) => true,
+        Operand::Imm(_) | Operand::Canary => true,
     }
 }
 
@@ -325,7 +332,7 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
             return Err("provenance instruction exceeds function extent".into());
         }
         let (addresses, used) = match instruction.op {
-            Op::Return => ([0, 0], 0),
+            Op::Return | Op::Abort => ([0, 0], 0),
             Op::Call { target } => {
                 return_sites.push(index_of(next).ok_or_else(|| {
                     format!("provenance CFG return site 0x{next:x} has no instruction")

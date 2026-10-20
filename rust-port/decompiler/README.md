@@ -60,7 +60,7 @@ coverage or a function limit returns 1 and stays visible as `status:partial` and
 | Layer | Current coverage |
 |---|---|
 | Input | ELF64, little-endian x86-64, ET_EXEC/ET_DYN; strict program/section bounds, SYMTAB/DYNSYM, extended indices, executable file-backed mappings |
-| Instructions | Scalar integer moves/extensions, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, direct CALL, alignment NOPs |
+| Instructions | Scalar integer moves/extensions, the `%fs:0x28` stack-protector canary, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, direct CALL, alignment NOPs |
 | State | 8/16/32/64-bit aliases including AH; 32-bit zero extension; modeled CF/PF/ZF/SF/OF and undefined-flag guards; bounded stack locals and saved registers |
 | Memory | Validated file-backed read-only PT_LOAD objects, RIP-relative addresses/loads, indexed integer loads, full-width pointer spills, same-object subtraction and explicit pointer results |
 | Control flow | Reachable direct branches, loops, direct calls, recursion and tail jumps to sized local functions, byte-ownership overlap checks, explicit labels in generated C |
@@ -111,6 +111,34 @@ and loses none, and the other 351 files give identical output.
 `review/rust_backend.py` finds generated C and Rust identical on all 384
 decompiled functions in those 18 files and on 121 functions across the test
 objects, libc, libm, libz, liblzma and five other libraries (112 vectors each).
+
+## Stack protector and aborting imports
+
+Code built with `-fstack-protector` reads the canary at `%fs:0x28`. That one
+operand is admitted, as a 64-bit read; every other segment override is still
+rejected. The runtime gives the canary an object of its own with no bytes: it
+can be spilled to the stack and reloaded, and subtracting, XORing or comparing
+it with itself gives zero with the flags of an equal subtraction, so the usual
+check passes. Any other use, such as dereferencing or returning it, aborts.
+
+A call or jump to the PLT stub of `__stack_chk_fail`, `__fortify_fail`,
+`__chk_fail`, `abort` or `__assert_fail` is generated as an abort: these end
+the process with SIGABRT, as the generated code does. A stub is recognized by
+its code (`endbr64`, then `jmp *GOT(%rip)`) and a JUMP_SLOT or GLOB_DAT
+relocation of that GOT slot against an undefined dynamic symbol of that name,
+which assumes no symbol interposition. Calls to any other import still reject
+the function, and a call at the end of a function must reach one of these.
+
+`review/stack_protector.py` builds `fixtures/stack-protector.c` with
+`-fstack-protector-all` at O0, O2 and O3 and calls the native original, the
+generated C and the generated Rust in forked children on 209 vectors each. All
+three match the independent formulas, including the vectors where `abort()`
+and `assert()` fire; the function that calls `puts()` is rejected. Over the
+369-file sample, these changes add 23 functions in 10 files and lose none; the
+other 359 files give identical output apart from the embedded runtime.
+`review/rust_backend.py` finds generated C and Rust identical on all 268
+decompiled functions in those 10 files. Most canary-checking functions also
+call other imports, which remain the largest single reason for rejection.
 
 ## Meaning of guarded C
 

@@ -36,6 +36,10 @@ pub const RG_ROR: u32 = 12;
 pub const RG_STACK_SIZE: usize = 8192;
 pub const RG_STACK_BASE: u64 = 0x100000;
 pub const RG_ENTRY_SP: u64 = RG_STACK_BASE + RG_STACK_SIZE as u64 / 2 + 8;
+// The stack-protector canary (%fs:0x28) is an object of its own with no
+// bytes: it can be spilled and compared with itself, never read through or
+// returned. Image ids never reach it (at most image_count).
+pub const RG_CANARY: u32 = u32::MAX;
 
 pub struct RgState {
     pub r: [RgValue; 16],
@@ -77,6 +81,13 @@ pub fn rg_const(x: u64) -> RgValue {
         x,
         k: u64::MAX,
         p: 0,
+    }
+}
+pub fn rg_canary() -> RgValue {
+    RgValue {
+        x: 0,
+        k: u64::MAX,
+        p: RG_CANARY,
     }
 }
 pub fn rg_need(v: RgValue, w: u32) -> u64 {
@@ -301,6 +312,13 @@ pub fn rg_alu(s: &mut RgState, op: u32, av: RgValue, bv: RgValue, w: u32) -> RgV
         if w != 64 || av.p == 2 || bv.p == 2 {
             rg_fail();
         }
+        // The canary minus, or XOR, itself is zero with an equal SUB's flags.
+        if av.p == RG_CANARY && bv.p == RG_CANARY && a == b && (op == RG_SUB || op == RG_XOR) {
+            rg_szp(s, 0, 64);
+            rg_bit(s, RG_CF, false);
+            rg_bit(s, RG_OF, false);
+            return rg_const(0);
+        }
         let pointer;
         if op == RG_ADD && (av.p == 0 || bv.p == 0) {
             r = a.wrapping_add(b);
@@ -455,6 +473,10 @@ pub fn rg_alu(s: &mut RgState, op: u32, av: RgValue, bv: RgValue, w: u32) -> RgV
 /// Keep every other CMP flag unknown: subtraction alone does not establish the
 /// address-dependent flags of the original machine pointers.
 pub fn rg_compare(s: &mut RgState, a: RgValue, b: RgValue, w: u32) {
+    if w == 64 && a.p == RG_CANARY && b.p == RG_CANARY {
+        let _ = rg_alu(s, RG_SUB, a, b, w);
+        return;
+    }
     if w == 64 && a.p >= 3 && a.p == b.p {
         let _ = rg_image_object_for(s, a.p);
         let x = rg_need(a, 64);

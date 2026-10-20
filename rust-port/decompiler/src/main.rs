@@ -7,7 +7,8 @@ use rust_ghidra::{
         rust_file_prefix,
     },
     image::ImageModel,
-    lift::{LiftedFunction, lift_function, link},
+    lift::{Instruction, LiftedFunction, Op, lift_function, link},
+    plt::AbortingImports,
 };
 use std::{
     fmt::Write,
@@ -142,9 +143,27 @@ impl Lang {
 /// Lift a function and link every function its direct calls and tail jumps
 /// reach. A target must be the start of a sized function symbol; PLT stubs and other
 /// external code are not, so calls into them fail closed.
-fn lift_linked(elf: &ElfImage<'_>, bytes: &[u8], address: u64) -> Result<LiftedFunction, String> {
+fn lift_linked(
+    elf: &ElfImage<'_>,
+    aborting: &AbortingImports,
+    bytes: &[u8],
+    address: u64,
+) -> Result<LiftedFunction, String> {
     let entry = lift_function(bytes, address).map_err(|e| e.to_string())?;
     link(entry, |target| {
+        // A PLT stub of an import that aborts the process becomes an abort.
+        if aborting.stub(elf, target).is_some() {
+            return Ok(LiftedFunction {
+                start: target,
+                end: target + 1,
+                instructions: vec![Instruction {
+                    address: target,
+                    len: 1,
+                    op: Op::Abort,
+                }],
+                callees: Vec::new(),
+            });
+        }
         let mut sizes = elf
             .functions()
             .iter()
@@ -222,6 +241,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
         let bytes = load(input)?;
         let elf = ElfImage::parse(&bytes)?;
         let image = ImageModel::build(&elf);
+        let aborting = AbortingImports::build(&elf);
         let mut seen = std::collections::BTreeSet::new();
         let selected: Vec<_> = elf
             .functions()
@@ -236,7 +256,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
         for f in selected.iter().take(limit) {
             let result = (|| {
                 let code = elf.function_bytes(f)?;
-                let ir = lift_linked(&elf, code, f.address)?;
+                let ir = lift_linked(&elf, &aborting, code, f.address)?;
                 emit_all(
                     &ir,
                     &f.name,
@@ -430,7 +450,7 @@ fn run() -> Result<u8, String> {
         let function_bytes = elf
             .function_bytes(&function)
             .map_err(|e| ("unsupported".into(), e))?;
-        let lifted = lift_linked(&elf, function_bytes, function.address)
+        let lifted = lift_linked(&elf, &AbortingImports::build(&elf), function_bytes, function.address)
             .map_err(|e| ("unsupported".into(), e))?;
         let image = ImageModel::build(&elf);
         let (c_emitted, rust_emitted) = emit_all(

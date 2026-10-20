@@ -19,6 +19,10 @@ enum { RG_ADD,RG_ADC,RG_SUB,RG_SBB,RG_AND,RG_OR,RG_XOR,RG_IMUL,
 enum { RG_STACK_SIZE=8192 };
 #define RG_STACK_BASE UINT64_C(0x100000)
 #define RG_ENTRY_SP (RG_STACK_BASE + RG_STACK_SIZE/2 + 8)
+/* The stack-protector canary (%fs:0x28) is an object of its own with no
+ * bytes: it can be spilled and compared with itself, never read through or
+ * returned. Image ids never reach it (at most image_count). */
+#define RG_CANARY UINT_MAX
 typedef struct {
     rg_value r[16];
     unsigned char mem[RG_STACK_SIZE], known[RG_STACK_SIZE];
@@ -29,12 +33,13 @@ typedef struct {
     unsigned image_count;
 } rg_state;
 
-static void rg_fail(void) { abort(); }
+static _Noreturn void rg_fail(void) { abort(); }
 static uint64_t rg_mask(unsigned w) {
     if(w!=8 && w!=16 && w!=32 && w!=64) rg_fail();
     return w==64 ? UINT64_MAX : (UINT64_C(1)<<w)-1;
 }
 static rg_value rg_const(uint64_t x) { return (rg_value){x,UINT64_MAX,0}; }
+static rg_value rg_canary(void) { return (rg_value){0,UINT64_MAX,RG_CANARY}; }
 static uint64_t rg_need(rg_value v, unsigned w) {
     uint64_t mask=rg_mask(w);
     if((v.k&mask)!=mask) rg_fail();
@@ -162,6 +167,11 @@ static rg_value rg_alu(rg_state *s,unsigned op,rg_value av,rg_value bv,unsigned 
     unsigned pointer=0;
     if(av.p || bv.p) {
         if(w!=64 || av.p==2 || bv.p==2) rg_fail();
+        /* The canary minus, or XOR, itself is zero with an equal SUB's flags. */
+        if(av.p==RG_CANARY && bv.p==RG_CANARY && a==b && (op==RG_SUB || op==RG_XOR)) {
+            rg_szp(s,0,64); rg_bit(s,RG_CF,0); rg_bit(s,RG_OF,0);
+            return rg_const(0);
+        }
         if(op==RG_ADD && (!av.p || !bv.p)) { r=a+b; pointer=av.p?av.p:bv.p; }
         else if(op==RG_SUB && av.p && !bv.p) { r=a-b; pointer=av.p; }
         else if(op==RG_SUB && av.p && av.p==bv.p) { r=a-b; pointer=0; }
@@ -227,6 +237,7 @@ static rg_value rg_alu(rg_state *s,unsigned op,rg_value av,rg_value bv,unsigned 
  * Keep every other CMP flag unknown: subtraction alone does not establish the
  * address-dependent flags of the original machine pointers. */
 static void rg_compare(rg_state *s,rg_value a,rg_value b,unsigned w) {
+    if(w==64 && a.p==RG_CANARY && b.p==RG_CANARY) { (void)rg_alu(s,RG_SUB,a,b,w); return; }
     if(w==64 && a.p>=3 && a.p==b.p) {
         (void)rg_image_object_for(s,a.p);
         uint64_t x=rg_need(a,64), y=rg_need(b,64);

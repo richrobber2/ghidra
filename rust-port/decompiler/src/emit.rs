@@ -181,6 +181,7 @@ impl Context<'_> {
                 self.address(m, true, false, state)?,
                 m.width
             ),
+            Operand::Canary => "rg_canary()".into(),
         })
     }
     fn put(
@@ -224,6 +225,7 @@ impl Context<'_> {
             )
             .unwrap(),
             (Operand::Imm(_), _) => return Err("IR has an immediate destination".into()),
+            (Operand::Canary, _) => return Err("IR writes the stack-protector canary".into()),
         }
         Ok(())
     }
@@ -532,6 +534,7 @@ fn emit(
                 }
                 terminal=true;
             }
+            Op::Abort=>{out.push_str("  rg_fail();\n");terminal=true;}
             Op::Nop=>{}
         }
         if !terminal {
@@ -727,6 +730,26 @@ mod tests {
             assert_eq!(r.x, 0xff);
             let v = rg_extend(rg_const(0x80), 8, 64, 1);
             assert_eq!(v.x, 0xffff_ffff_ffff_ff80);
+        }
+
+        #[test]
+        fn the_canary_cancels_only_against_itself() {
+            let mut s = RgState::new(&[]);
+            let zero = rg_alu(&mut s, RG_SUB, rg_canary(), rg_canary(), 64);
+            assert_eq!((zero.x, zero.p), (0, 0));
+            assert!(rg_condition(&s, 4) && !rg_condition(&s, 2) && !rg_condition(&s, 0));
+            let zero = rg_alu(&mut s, RG_XOR, rg_canary(), rg_canary(), 64);
+            assert_eq!((zero.x, zero.p), (0, 0));
+            rg_compare(&mut s, rg_canary(), rg_canary(), 64);
+            assert!(rg_condition(&s, 4));
+            // Spilled to the stack and reloaded, it keeps its provenance.
+            let slot = RgValue {
+                x: RG_ENTRY_SP - 16,
+                k: u64::MAX,
+                p: 1,
+            };
+            rg_store(&mut s, slot, 64, rg_canary());
+            assert_eq!(rg_load(&s, slot, 64).p, RG_CANARY);
         }
 
         #[test]

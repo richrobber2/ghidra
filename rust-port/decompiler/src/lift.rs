@@ -41,6 +41,10 @@ pub enum Operand {
     Reg(RegView),
     Imm(u64),
     Mem(Memory),
+    /// The 64-bit stack-protector canary at `%fs:0x28`, read-only. Its value
+    /// is unknown and fixed for the process; only comparing it with itself
+    /// is modeled.
+    Canary,
 }
 
 impl Operand {
@@ -48,6 +52,7 @@ impl Operand {
         match self {
             Self::Reg(reg) => Some(reg.width),
             Self::Mem(mem) => Some(mem.width),
+            Self::Canary => Some(64),
             Self::Imm(_) => None,
         }
     }
@@ -160,6 +165,9 @@ pub enum Op {
         target: u64,
     },
     Return,
+    /// A call or jump to a function that terminates the process, such as a
+    /// PLT stub for `__stack_chk_fail`: the generated code aborts.
+    Abort,
     Nop,
 }
 
@@ -287,7 +295,9 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
             Op::Jump { target } if inside(*target) => work.push_back(*target),
             Op::Jump { .. } => saw_return = true,
             // The callee is lifted separately; execution resumes after it.
-            Op::Call { .. } => work.push_back(next),
+            // A call at the end of the extent must not return (`link` checks).
+            Op::Call { .. } if inside(next) => work.push_back(next),
+            Op::Call { .. } => saw_return = true,
             Op::Branch { target, .. } => {
                 if inside(*target) {
                     work.push_back(*target);
@@ -360,13 +370,34 @@ pub fn link(
         }
         next += 1;
     }
+    // A call or jump to a function that only aborts is itself an abort. Such
+    // a function stays in the program only as a conditional branch target.
+    let aborts: std::collections::BTreeSet<u64> = functions[1..]
+        .iter()
+        .filter(|function| {
+            function.instructions.len() == 1 && function.instructions[0].op == Op::Abort
+        })
+        .map(|function| function.start)
+        .collect();
+    let mut branched = std::collections::BTreeSet::new();
+    for function in &mut functions {
+        for instruction in &mut function.instructions {
+            match instruction.op {
+                Op::Call { target } | Op::Jump { target } if aborts.contains(&target) => {
+                    instruction.op = Op::Abort;
+                }
+                Op::Branch { target, .. } if aborts.contains(&target) => {
+                    branched.insert(target);
+                }
+                _ => {}
+            }
+        }
+    }
+    functions
+        .retain(|function| !aborts.contains(&function.start) || branched.contains(&function.start));
     let mut functions = functions.into_iter();
     let mut program = functions.next().expect("the entry function");
-    let callees: Vec<LiftedFunction> = functions.collect();
-    if callees.is_empty() {
-        return Ok(program);
-    }
-    for callee in callees {
+    for callee in functions {
         program.callees.push((callee.start, callee.end));
         program.instructions.extend(callee.instructions);
     }
@@ -389,6 +420,20 @@ pub fn link(
             ));
         }
     }
+    let addresses: std::collections::BTreeSet<u64> = program
+        .instructions
+        .iter()
+        .map(|instruction| instruction.address)
+        .collect();
+    for instruction in &program.instructions {
+        let next = instruction.address + u64::from(instruction.len);
+        if matches!(instruction.op, Op::Call { .. }) && !addresses.contains(&next) {
+            return Err(format!(
+                "call at 0x{:x} may return past the end of its function",
+                instruction.address
+            ));
+        }
+    }
     Ok(program)
 }
 
@@ -402,7 +447,11 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
     {
         return Err(error(ip, "LOCK/REP prefixes are outside the scalar model"));
     }
-    if ins.segment_prefix() != Register::None && ins.mnemonic() != Mnemonic::Nop {
+    // %fs is admitted only for the stack-protector canary operand, which
+    // `operand` checks; every other segment override is rejected.
+    let fs_memory = ins.segment_prefix() == Register::FS
+        && (0..ins.op_count()).any(|index| ins.op_kind(index) == OpKind::Memory);
+    if ins.segment_prefix() != Register::None && ins.mnemonic() != Mnemonic::Nop && !fs_memory {
         return Err(error(
             ip,
             "segment overrides are outside the flat SysV model",
@@ -685,12 +734,31 @@ fn writable_operand(ins: &Decoded, index: u32) -> Result<Operand, LiftError> {
     if matches!(value, Operand::Imm(_)) {
         return Err(error(ins.ip(), "immediate destination is invalid"));
     }
+    if value == Operand::Canary {
+        return Err(error(
+            ins.ip(),
+            "stack-protector canary writes are not modeled",
+        ));
+    }
     Ok(value)
 }
 
 fn operand(ins: &Decoded, index: u32) -> Result<Operand, LiftError> {
     let value = match ins.op_kind(index) {
         OpKind::Register => Operand::Reg(register_operand(ins, index)?),
+        OpKind::Memory if ins.segment_prefix() == Register::FS => {
+            if ins.memory_base() != Register::None
+                || ins.memory_index() != Register::None
+                || ins.memory_displacement64() != 0x28
+                || ins.memory_size().size() != 8
+            {
+                return Err(error(
+                    ins.ip(),
+                    "segment overrides are outside the flat SysV model",
+                ));
+            }
+            Operand::Canary
+        }
         OpKind::Memory => {
             let size = ins.memory_size().size();
             if !matches!(size, 1 | 2 | 4 | 8) {
@@ -713,6 +781,12 @@ fn operand(ins: &Decoded, index: u32) -> Result<Operand, LiftError> {
 
 fn memory(ins: &Decoded, width: u8) -> Result<Memory, LiftError> {
     let ip = ins.ip();
+    if ins.segment_prefix() != Register::None {
+        return Err(error(
+            ip,
+            "segment overrides are outside the flat SysV model",
+        ));
+    }
     let base_reg = ins.memory_base();
     let index_reg = ins.memory_index();
     let rip_relative_address = if base_reg == Register::RIP {
@@ -991,6 +1065,75 @@ mod tests {
                 .unwrap_err()
                 .contains("overlapping")
         );
+    }
+
+    #[test]
+    fn admits_only_the_stack_protector_canary_through_fs() {
+        // mov %fs:0x28,%rax; sub %fs:0x28,%rax; ret
+        let lifted = lift_function(
+            &[
+                0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0, 0x64, 0x48, 0x2b, 0x04, 0x25, 0x28, 0,
+                0, 0, 0xc3,
+            ],
+            0x1000,
+        )
+        .unwrap();
+        assert!(matches!(
+            lifted.instructions[0].op,
+            Op::Move {
+                src: Operand::Canary,
+                ..
+            }
+        ));
+        assert!(matches!(
+            lifted.instructions[1].op,
+            Op::Binary {
+                right: Operand::Canary,
+                ..
+            }
+        ));
+        for bytes in [
+            // mov %fs:0x30,%rax / mov %eax,%fs:0x28 (32-bit) / mov %rax,%fs:0x28
+            &[0x64, 0x48, 0x8b, 0x04, 0x25, 0x30, 0, 0, 0, 0xc3][..],
+            &[0x64, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0, 0xc3][..],
+            &[0x64, 0x48, 0x89, 0x04, 0x25, 0x28, 0, 0, 0, 0xc3][..],
+            // mov %gs:0x28,%rax / mov %fs:0x28(%rdi),%rax / lea %fs:0x28,%rax
+            &[0x65, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0, 0xc3][..],
+            &[0x64, 0x48, 0x8b, 0x47, 0x28, 0xc3][..],
+            &[0x64, 0x48, 0x8d, 0x04, 0x25, 0x28, 0, 0, 0, 0xc3][..],
+        ] {
+            assert!(lift_function(bytes, 0x1000).is_err(), "{bytes:02x?}");
+        }
+    }
+
+    #[test]
+    fn calls_and_jumps_to_aborting_functions_become_aborts() {
+        let stub = |at: u64| -> Result<LiftedFunction, String> {
+            Ok(LiftedFunction {
+                start: at,
+                end: at + 1,
+                instructions: vec![Instruction {
+                    address: at,
+                    len: 1,
+                    op: Op::Abort,
+                }],
+                callees: Vec::new(),
+            })
+        };
+        // 0x1000: je 0x2000; call 0x2000 (falls off the end)
+        let entry = lift_function(
+            &[0x0f, 0x84, 0xfa, 0x0f, 0, 0, 0xe8, 0xf5, 0x0f, 0, 0],
+            0x1000,
+        )
+        .unwrap();
+        let program = link(entry, stub).unwrap();
+        assert_eq!(program.instructions[1].op, Op::Abort);
+        // The branch target stays, as the only reference to the stub.
+        assert_eq!(program.callees, vec![(0x2000, 0x2001)]);
+        // A call at the end of a function that may return is rejected.
+        let entry = lift_function(&[0xe8, 0xfb, 0x0f, 0, 0], 0x1000).unwrap();
+        let returning = |at: u64| lift_function(&[0xc3], at).map_err(|e| e.to_string());
+        assert!(link(entry, returning).unwrap_err().contains("past the end"));
     }
 
     #[test]
