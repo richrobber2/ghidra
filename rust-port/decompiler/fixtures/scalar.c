@@ -73,3 +73,19 @@ F zero_extend32(ARGS) {
     x = (x << (d & 31)) | (x >> ((-(uint32_t)d) & 31));
     return (uint64_t)x + e - f;
 }
+/* Direct calls to local functions: plain, recursive and tail calls. */
+static __attribute__((noinline)) uint64_t helper_mix(uint64_t x, uint64_t y) {
+    return (x ^ (y << 7)) + 0x1234;
+}
+static __attribute__((noinline)) uint64_t helper_factorial(uint64_t n) {
+    return n <= 1 ? 1 : n * helper_factorial(n - 1);
+}
+F call_helper(ARGS) {
+    return helper_mix(a, b) + helper_mix(c, d) * 3 + (e ^ f);
+}
+F call_recursive(ARGS) {
+    return helper_factorial(a & 15) + b;
+}
+F call_tail(ARGS) {
+    return helper_mix(a ^ f, b);
+}

@@ -7,7 +7,7 @@ use rust_ghidra::{
         rust_file_prefix,
     },
     image::ImageModel,
-    lift::lift_function,
+    lift::{LiftedFunction, lift_function, link},
 };
 use std::{
     fmt::Write,
@@ -139,6 +139,29 @@ impl Lang {
 
 /// Emit one function in every requested language. The C and Rust emitters
 /// share every support check, so they accept the same functions.
+/// Lift a function and link every function its direct calls and tail jumps
+/// reach. A target must be the start of a sized function symbol; PLT stubs and other
+/// external code are not, so calls into them fail closed.
+fn lift_linked(elf: &ElfImage<'_>, bytes: &[u8], address: u64) -> Result<LiftedFunction, String> {
+    let entry = lift_function(bytes, address).map_err(|e| e.to_string())?;
+    link(entry, |target| {
+        let mut sizes = elf
+            .functions()
+            .iter()
+            .filter(|f| f.address == target && f.size > 0);
+        let callee = sizes.next().ok_or_else(|| {
+            format!("control transfer to 0x{target:x}, which is not the start of a sized function symbol")
+        })?;
+        if sizes.any(|f| f.size != callee.size) {
+            return Err(format!(
+                "control transfer to 0x{target:x}, which has ambiguous function extents"
+            ));
+        }
+        let code = elf.function_bytes(callee)?;
+        lift_function(code, target).map_err(|e| format!("callee {}: {e}", callee.name))
+    })
+}
+
 fn emit_all(
     ir: &rust_ghidra::lift::LiftedFunction,
     name: &str,
@@ -213,7 +236,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
         for f in selected.iter().take(limit) {
             let result = (|| {
                 let code = elf.function_bytes(f)?;
-                let ir = lift_function(code, f.address).map_err(|e| e.to_string())?;
+                let ir = lift_linked(&elf, code, f.address)?;
                 emit_all(
                     &ir,
                     &f.name,
@@ -407,8 +430,8 @@ fn run() -> Result<u8, String> {
         let function_bytes = elf
             .function_bytes(&function)
             .map_err(|e| ("unsupported".into(), e))?;
-        let lifted = lift_function(function_bytes, function.address)
-            .map_err(|e| ("unsupported".into(), e.to_string()))?;
+        let lifted = lift_linked(&elf, function_bytes, function.address)
+            .map_err(|e| ("unsupported".into(), e))?;
         let image = ImageModel::build(&elf);
         let (c_emitted, rust_emitted) = emit_all(
             &lifted,
@@ -460,7 +483,7 @@ fn run() -> Result<u8, String> {
             std::fs::write(output.join("ir.json"), ir).map_err(|e| e.to_string())?;
             (
                 format!(
-                    "{{\"status\":\"ok\",\"backend\":\"native-rust\",\"input\":{},\"function\":{function},\"generated_function\":{},\"instruction_count\":{count},\"image_objects\":{images},\"guarded\":true,\"output_files\":{{{},\"ir\":\"ir.json\"}},\"scope\":\"x86-64 scalar leaf, six uint64 SysV arguments; bounded stack and immutable file-backed image objects; unknown state/provenance aborts\"}}\n",
+                    "{{\"status\":\"ok\",\"backend\":\"native-rust\",\"input\":{},\"function\":{function},\"generated_function\":{},\"instruction_count\":{count},\"image_objects\":{images},\"guarded\":true,\"output_files\":{{{},\"ir\":\"ir.json\"}},\"scope\":\"x86-64 scalar code with direct local calls, six uint64 SysV arguments; bounded stack and immutable file-backed image objects; unknown state/provenance aborts\"}}\n",
                     quote(&input.display().to_string()),
                     quote(&generated),
                     lang.files()

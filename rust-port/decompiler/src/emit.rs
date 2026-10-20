@@ -380,6 +380,14 @@ fn emit(
             format!("goto L_{target:x};")
         }
     };
+    // Every call's return address, in address order, for dispatching returns.
+    let mut return_sites: Vec<u64> = function
+        .instructions
+        .iter()
+        .filter(|ins| matches!(ins.op, Op::Call { .. }))
+        .map(|ins| ins.address + u64::from(ins.len))
+        .collect();
+    return_sites.sort_unstable();
     for (ins, state) in function.instructions.iter().zip(&states) {
         if out.len() > 32 * 1024 * 1024 {
             return Err(limit.into());
@@ -482,12 +490,36 @@ fn emit(
             } else {
                 "  s.r[4]=s.r[5];\n  rg_value value=rg_load(&s,s.r[4],64);\n  s.r[4].x+=8;\n  s.r[5]=value;\n"
             }),
+            Op::Call{target}=>{
+                let ret=ctx.constant(next);
+                if rust {
+                    writeln!(out,"  s.r[4].x=s.r[4].x.wrapping_sub(8);\n  let a=s.r[4]; rg_store(&mut s,a,64,rg_const({ret}));").unwrap();
+                } else {
+                    writeln!(out,"  s.r[4].x-=8;\n  rg_store(&s,s.r[4],64,rg_const({ret}));").unwrap();
+                }
+                writeln!(out,"  {}",jump(*target)).unwrap();
+                terminal=true;
+            }
             Op::Return=>{
-                if return_kind==ReturnKind::Pointer && state[0]&provenance::IMAGE==0 {
+                // Result checks apply to the entry function's own returns; a
+                // callee's return goes back to its caller.
+                let entry=(function.start..function.end).contains(&ins.address);
+                if entry && return_kind==ReturnKind::Pointer && state[0]&provenance::IMAGE==0 {
                     return Err("pointer result requires image provenance; scalar, stack and unknown returns are unsupported".into());
                 }
-                if return_kind!=ReturnKind::Pointer && state[0]==provenance::IMAGE {
+                if entry && return_kind!=ReturnKind::Pointer && state[0]==provenance::IMAGE {
                     return Err("RIP-relative pointer result requires --return pointer; relocation-derived numeric addresses are unsupported".into());
+                }
+                // Below the entry frame, RET pops a return address: only a
+                // call's return site continues, anything else aborts.
+                if !return_sites.is_empty() {
+                    if rust {
+                        let arms=return_sites.iter().map(|a| format!("0x{a:x}")).collect::<Vec<_>>().join(" | ");
+                        writeln!(out,"  if s.r[4].p!=1 {{ rg_fail(); }}\n  if rg_need(s.r[4],64)!=RG_ENTRY_SP {{\n    let ra=rg_load(&s,s.r[4],64); s.r[4].x=s.r[4].x.wrapping_add(8);\n    let target=rg_num(ra,64);\n    match target {{ {arms} => {{ pc = target; continue; }} _ => rg_fail(), }}\n  }}").unwrap();
+                    } else {
+                        let cases=return_sites.iter().map(|a| format!("case UINT64_C(0x{a:x}): goto L_{a:x};")).collect::<Vec<_>>().join(" ");
+                        writeln!(out,"  if(s.r[4].p!=1) rg_fail();\n  if(rg_need(s.r[4],64)!=RG_ENTRY_SP) {{\n    rg_value ra=rg_load(&s,s.r[4],64); s.r[4].x+=8;\n    switch(rg_num(ra,64)) {{ {cases} default: rg_fail(); }}\n  }}").unwrap();
+                    }
                 }
                 out.push_str(if rust {
                     "  if s.r[4].p!=1 || rg_need(s.r[4],64)!=RG_ENTRY_SP { rg_fail(); }\n"
@@ -725,6 +757,36 @@ mod tests {
         assert!(
             emit_rust_with_image(&lifted, "is_zero", Err("no image"), ReturnKind::Pointer).is_err()
         );
+    }
+
+    #[test]
+    fn calls_push_return_addresses_and_returns_dispatch_on_them() {
+        use crate::lift::link;
+        // 0x1000: call 0x2000; ret    0x2000: mov $7,%eax; ret
+        let entry = lift_function(&[0xe8, 0xfb, 0x0f, 0, 0, 0xc3], 0x1000).unwrap();
+        let program = link(entry, |at| {
+            lift_function(&[0xb8, 7, 0, 0, 0, 0xc3], at).map_err(|e| e.to_string())
+        })
+        .unwrap();
+        let c = emit_c_with_image(&program, "f", Err("no image"), ReturnKind::U64)
+            .unwrap()
+            .c;
+        assert!(c.contains("rg_store(&s,s.r[4],64,rg_const(UINT64_C(0x1005)));\n  goto L_2000;"));
+        assert!(c.contains(
+            "switch(rg_num(ra,64)) { case UINT64_C(0x1005): goto L_1005; default: rg_fail(); }"
+        ));
+        let rust = emit_rust_with_image(&program, "f", Err("no image"), ReturnKind::U64)
+            .unwrap()
+            .c;
+        assert!(
+            rust.contains("match target { 0x1005 => { pc = target; continue; } _ => rg_fail(), }")
+        );
+        // Without calls, returns keep the single-frame form.
+        let leaf = lift_function(&[0xb8, 7, 0, 0, 0, 0xc3], 0x2000).unwrap();
+        let c = emit_c_with_image(&leaf, "g", Err("no image"), ReturnKind::U64)
+            .unwrap()
+            .c;
+        assert!(!c.contains("switch(rg_num(ra,64))"));
     }
 
     #[test]

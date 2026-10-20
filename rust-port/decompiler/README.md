@@ -60,14 +60,15 @@ coverage or a function limit returns 1 and stays visible as `status:partial` and
 | Layer | Current coverage |
 |---|---|
 | Input | ELF64, little-endian x86-64, ET_EXEC/ET_DYN; strict program/section bounds, SYMTAB/DYNSYM, extended indices, executable file-backed mappings |
-| Instructions | Scalar integer moves/extensions, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, alignment NOPs |
+| Instructions | Scalar integer moves/extensions, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, direct CALL, alignment NOPs |
 | State | 8/16/32/64-bit aliases including AH; 32-bit zero extension; modeled CF/PF/ZF/SF/OF and undefined-flag guards; bounded stack locals and saved registers |
 | Memory | Validated file-backed read-only PT_LOAD objects, RIP-relative addresses/loads, indexed integer loads, full-width pointer spills, same-object subtraction and explicit pointer results |
-| Control flow | Reachable direct branches, loops, byte-ownership overlap checks, explicit labels in generated C |
+| Control flow | Reachable direct branches, loops, direct calls, recursion and tail jumps to sized local functions, byte-ownership overlap checks, explicit labels in generated C |
 | Output | Guarded machine-level GNU C11 using `uint64_t` and `__int128`, or the same guards as edition-2024 Rust (`--lang rust`); no inline assembly or calls back into the original engine |
 
 An unsupported reachable instruction rejects the whole function and produces no
-C for it. Calls, writable/global state, external pointer arguments, indirect branches,
+C for it. Calls to external or unsized code (PLT stubs, other libraries), indirect
+calls, writable/global state, external pointer arguments, indirect branches,
 SIMD/floating point, atomics, exceptions, other ABIs/architectures, relocated data,
 DWARF recovery and structured variable/type/loop reconstruction remain outside
 this version. It does not implement Ghidra's SSA/p-code optimization pipeline or
@@ -86,6 +87,30 @@ embedded at the top of `decompiled.rs`, so the file builds on its own with
 `rustc --edition 2024 --crate-type cdylib -C panic=abort -D warnings`. Image
 bytes become `static` arrays. A guard failure calls `std::process::abort`, as
 the C `rg_fail` does. The default output is still C, byte-identical to before.
+
+## Direct calls
+
+A direct `call` or a jump out of the function (a tail call) to the start of
+another sized function symbol links that function into the generated code,
+transitively, up to 64 functions; recursion and mutual recursion work. `call`
+pushes its return address on the modeled stack and jumps to the callee. `ret`
+in the entry frame returns the result as before; below it, `ret` pops the
+return address and continues only at a call's return site, aborting on any
+other value, so a callee that overwrites its return address cannot reach code
+the program never called. Two linked functions that decode the same bytes
+differently are rejected. Calls to PLT stubs, other libraries, unsized
+symbols or the middle of a function, and indirect calls, still reject the
+function.
+
+`review/validate.py` adds three call fixtures to `fixtures/scalar.c`
+(two calls to a helper, a recursive factorial, and a tail call) that pass at
+O0, O2 and O3 against independent formulas in the original, generated C and
+generated Rust arms: 51/51 supported and 18/18 rejects. Over the 369 system
+files used for the absolute-load check, linking adds 60 functions in 18 files
+and loses none, and the other 351 files give identical output.
+`review/rust_backend.py` finds generated C and Rust identical on all 384
+decompiled functions in those 18 files and on 121 functions across the test
+objects, libc, libm, libz, liblzma and five other libraries (112 vectors each).
 
 ## Meaning of guarded C
 
@@ -146,7 +171,8 @@ contents/within-object-offset comparisons; cross-function pointer identity is no
 preserved because each emitted function embeds its own objects.
 
 The modeled stack is 8192 bytes with entry alignment of 16 bytes. It supports
-ordinary leaf frames, spills and red-zone locals; deeper frames are unsupported.
+ordinary frames, spills and red-zone locals, and the frames of linked callees
+below them; a call chain deeper than the 4096 bytes below the entry frame aborts.
 Pointer arithmetic invalidates modeled flags rather than deriving them from an
 invented stack location. The C output deliberately keeps machine state and labels
 visible; it is executable low-level reconstruction, not polished source code.
@@ -181,7 +207,7 @@ functions and 18/18 rejects with the Rust arm on 523 vectors, and
 rust_backend.py matched 87/87 functions from libc, libm, libz, liblzma and eight
 other inputs, including 6 that read image memory and 2,240 matching aborts.
 
-The next stage is call/prototype modeling, followed by SSA/data-flow optimization
+The next stage is calls into other libraries and prototype modeling, followed by SSA/data-flow optimization
 and structured C recovery. Each needs an explicit
 contract and differential gates before broadening claims. This first subset has
 no whole-Ghidra speed claim; correctness and coverage precede a fair performance

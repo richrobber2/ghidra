@@ -219,6 +219,8 @@ fn transfer(op: &Op, input: State) -> State {
             state.regs[4] = input.regs[5];
             state.regs[5] = NUM | UNKNOWN | input.stack;
         }
+        // The pushed return address is a number.
+        Op::Call { .. } => state.stack |= NUM,
         Op::Compare { .. } | Op::Jump { .. } | Op::Branch { .. } | Op::Return | Op::Nop => {}
     }
     state
@@ -273,9 +275,18 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
     if count == 0 || count > MAX_INSTRUCTIONS {
         return Err("provenance instruction limit exceeded or empty CFG".into());
     }
+    // The entry function's extent, then those of linked callees.
+    let extents: Vec<(u64, u64)> = std::iter::once((function.start, function.end))
+        .chain(function.callees.iter().copied())
+        .collect();
+    let extent_end = |address: u64| {
+        extents
+            .iter()
+            .find(|(start, end)| address >= *start && address < *end)
+            .map(|extent| extent.1)
+    };
     for instruction in &function.instructions {
-        if instruction.address < function.start
-            || instruction.address >= function.end
+        if extent_end(instruction.address).is_none()
             || instruction.len == 0
             || !valid_op(&instruction.op)
         {
@@ -300,18 +311,27 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
             .map(|position| indices[position].1)
     };
     let entry = index_of(function.start).ok_or("provenance CFG has no entry instruction")?;
-    // At most two successors each: a branch target and its fall-through.
+    // At most two successors each: a branch target and its fall-through. A
+    // call's successor is its callee; every return may resume at any call's
+    // return site, which over-approximates the call graph's return edges.
     let mut successors = vec![([0usize; 2], 0u8); count];
+    let mut return_sites = Vec::new();
     for (index, instruction) in function.instructions.iter().enumerate() {
         let next = instruction
             .address
             .checked_add(u64::from(instruction.len))
             .ok_or("provenance instruction address overflow")?;
-        if next > function.end {
+        if extent_end(instruction.address).is_none_or(|end| next > end) {
             return Err("provenance instruction exceeds function extent".into());
         }
         let (addresses, used) = match instruction.op {
             Op::Return => ([0, 0], 0),
+            Op::Call { target } => {
+                return_sites.push(index_of(next).ok_or_else(|| {
+                    format!("provenance CFG return site 0x{next:x} has no instruction")
+                })?);
+                ([target, 0], 1)
+            }
             Op::Jump { target } => ([target, 0], 1),
             Op::Branch { target, .. } => ([target, next], 2),
             _ => ([next, 0], 1),
@@ -347,7 +367,12 @@ pub fn analyze(function: &LiftedFunction) -> Result<Vec<[u8; 16]>, String> {
         }
         let output = transfer(&function.instructions[index].op, states[index].unwrap());
         let (slots, len) = successors[index];
-        for &successor in &slots[..usize::from(len)] {
+        let targets = if matches!(function.instructions[index].op, Op::Return) {
+            &return_sites[..]
+        } else {
+            &slots[..usize::from(len)]
+        };
+        for &successor in targets {
             let joined = if let Some(previous) = states[successor] {
                 let mut joined = previous;
                 for (slot, value) in joined.regs.iter_mut().zip(output.regs) {
@@ -416,6 +441,7 @@ mod tests {
             start: 0x1000,
             end: 0x1000 + instructions.len() as u64,
             instructions,
+            callees: Vec::new(),
         }
     }
 

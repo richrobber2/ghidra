@@ -12,6 +12,8 @@ use std::fmt;
 
 pub const MAX_FUNCTION_BYTES: usize = 1024 * 1024;
 pub const MAX_INSTRUCTIONS: usize = 65_536;
+/// Functions one `link` may combine, the entry function included.
+pub const MAX_LINKED_FUNCTIONS: usize = 64;
 
 /// The canonical register ordering is RAX, RCX, RDX, RBX, RSP, RBP, RSI,
 /// RDI, R8, R9, R10, R11, R12, R13, R14, R15. Widths are in bits.
@@ -152,6 +154,11 @@ pub enum Op {
         dst: Operand,
     },
     Leave,
+    /// A direct near call: push the following address, then jump to
+    /// `target`, which must be the start of another lifted function.
+    Call {
+        target: u64,
+    },
     Return,
     Nop,
 }
@@ -170,6 +177,9 @@ pub struct LiftedFunction {
     pub end: u64,
     /// Reachable instructions in ascending address order.
     pub instructions: Vec<Instruction>,
+    /// Extents of the functions linked in by `link` for direct calls, in
+    /// ascending order; empty for a single lifted function.
+    pub callees: Vec<(u64, u64)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -269,11 +279,21 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
             ));
         }
         let op = lift_instruction(&decoded)?;
+        // A jump or branch out of the extent is a tail transfer to another
+        // function, which `link` must resolve; it leaves the function too.
+        let inside = |target: u64| (start..end).contains(&target);
         match &op {
             Op::Return => saw_return = true,
-            Op::Jump { target } => work.push_back(*target),
+            Op::Jump { target } if inside(*target) => work.push_back(*target),
+            Op::Jump { .. } => saw_return = true,
+            // The callee is lifted separately; execution resumes after it.
+            Op::Call { .. } => work.push_back(next),
             Op::Branch { target, .. } => {
-                work.push_back(*target);
+                if inside(*target) {
+                    work.push_back(*target);
+                } else {
+                    saw_return = true;
+                }
                 work.push_back(next);
             }
             _ => work.push_back(next),
@@ -293,7 +313,83 @@ pub fn lift_function(bytes: &[u8], start: u64) -> Result<LiftedFunction, LiftErr
         start,
         end,
         instructions,
+        callees: Vec::new(),
     })
+}
+
+/// Combine `entry` with every function its direct calls and tail jumps reach,
+/// transitively, into one program. `resolve` lifts the function that starts at a call
+/// target, or explains why there is none. Instructions shared by two functions
+/// must decode identically; any other overlap is rejected. A function with no
+/// calls is returned unchanged.
+pub fn link(
+    entry: LiftedFunction,
+    mut resolve: impl FnMut(u64) -> Result<LiftedFunction, String>,
+) -> Result<LiftedFunction, String> {
+    let mut functions = vec![entry];
+    let mut starts = std::collections::BTreeSet::from([functions[0].start]);
+    let mut next = 0;
+    while next < functions.len() {
+        let function = &functions[next];
+        let outside = |target: u64| !(function.start..function.end).contains(&target);
+        let targets: Vec<u64> = function
+            .instructions
+            .iter()
+            .filter_map(|instruction| match instruction.op {
+                Op::Call { target } => Some(target),
+                Op::Jump { target } | Op::Branch { target, .. } if outside(target) => Some(target),
+                _ => None,
+            })
+            .collect();
+        for target in targets {
+            if !starts.insert(target) {
+                continue;
+            }
+            if starts.len() > MAX_LINKED_FUNCTIONS {
+                return Err(format!(
+                    "call graph exceeds {MAX_LINKED_FUNCTIONS} linked functions"
+                ));
+            }
+            let callee = resolve(target)?;
+            if callee.start != target || !callee.callees.is_empty() {
+                return Err(format!(
+                    "callee at 0x{target:x} was not lifted at its start"
+                ));
+            }
+            functions.push(callee);
+        }
+        next += 1;
+    }
+    let mut functions = functions.into_iter();
+    let mut program = functions.next().expect("the entry function");
+    let callees: Vec<LiftedFunction> = functions.collect();
+    if callees.is_empty() {
+        return Ok(program);
+    }
+    for callee in callees {
+        program.callees.push((callee.start, callee.end));
+        program.instructions.extend(callee.instructions);
+    }
+    if program.instructions.len() > MAX_INSTRUCTIONS * MAX_LINKED_FUNCTIONS {
+        return Err("linked program instruction limit exceeded".into());
+    }
+    program.callees.sort_unstable();
+    program
+        .instructions
+        .sort_by_key(|instruction| instruction.address);
+    program.instructions.dedup();
+    if program.instructions.len() > MAX_INSTRUCTIONS {
+        return Err("linked program instruction limit exceeded".into());
+    }
+    for pair in program.instructions.windows(2) {
+        if pair[0].address + u64::from(pair[0].len) > pair[1].address {
+            return Err(format!(
+                "linked functions decode overlapping instructions at 0x{:x}",
+                pair[1].address
+            ));
+        }
+    }
+    Ok(program)
 }
 
 fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
@@ -421,6 +517,15 @@ fn lift_instruction(ins: &Decoded) -> Result<Op, LiftError> {
                 left,
                 right,
                 test: mnemonic == Test,
+            })
+        }
+        Call => {
+            require_count(ins, 1)?;
+            if ins.op_kind(0) != OpKind::NearBranch64 {
+                return Err(error(ip, "indirect calls are not modeled"));
+            }
+            Ok(Op::Call {
+                target: ins.near_branch64(),
             })
         }
         Jmp => {
@@ -803,7 +908,10 @@ mod tests {
         // JZ enters the immediate byte of a reachable MOV EAX,imm32.
         assert!(lift_function(&[0x74, 0x01, 0xb8, 0, 0, 0, 0, 0xc3], 0x1000).is_err());
         assert!(lift_function(&[0x74, 0x01, 0x48, 0x89, 0xf8, 0xc3], 0x1000).is_err());
-        assert!(lift_function(&[0xeb, 0x7f, 0xc3], 0x1000).is_err());
+        // A jump out of the extent is a tail transfer that only `link` can
+        // resolve; with no function there, it is rejected.
+        let tail = lift_function(&[0xeb, 0x7f, 0xc3], 0x1000).unwrap();
+        assert!(link(tail, |at| Err(format!("no function at 0x{at:x}"))).is_err());
         assert!(lift_function(&[0x90], 0x1000).is_err());
     }
 
@@ -826,9 +934,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_calls_simd_indirect_jumps_and_prefix_semantics() {
+    fn rejects_indirect_calls_simd_indirect_jumps_and_prefix_semantics() {
         for bytes in [
-            &[0xe8, 0, 0, 0, 0, 0xc3][..],
+            &[0xff, 0xd0, 0xc3][..],
+            &[0xff, 0x10, 0xc3][..],
             &[0x0f, 0x57, 0xc0, 0xc3][..],
             &[0xff, 0xe0][..],
             &[0xf0, 0x01, 0x07, 0xc3][..],
@@ -840,6 +949,48 @@ mod tests {
         ] {
             assert!(lift_function(bytes, 0x1000).is_err(), "{bytes:02x?}");
         }
+    }
+
+    #[test]
+    fn links_direct_callees_once_and_rejects_conflicts() {
+        // 0x1000: call 0x2000; ret    0x2000: mov $7,%eax; ret
+        let entry = || lift_function(&[0xe8, 0xfb, 0x0f, 0, 0, 0xc3], 0x1000).unwrap();
+        assert_eq!(entry().instructions[0].op, Op::Call { target: 0x2000 });
+        let callee = |at: u64| -> Result<LiftedFunction, String> {
+            if at == 0x2000 {
+                Ok(lift_function(&[0xb8, 7, 0, 0, 0, 0xc3], at).unwrap())
+            } else {
+                Err(format!("no function at 0x{at:x}"))
+            }
+        };
+        let program = link(entry(), callee).unwrap();
+        assert_eq!(program.callees, vec![(0x2000, 0x2006)]);
+        assert_eq!(program.instructions.len(), 4);
+        assert_eq!((program.start, program.end), (0x1000, 0x1006));
+        // A function without calls, and self-recursion, need no resolver.
+        let leaf = lift_function(&[0xc3], 0x3000).unwrap();
+        assert_eq!(link(leaf.clone(), |_| unreachable!()).unwrap(), leaf);
+        let recursive = lift_function(&[0xe8, 0xfb, 0xff, 0xff, 0xff, 0xc3], 0x1000).unwrap();
+        assert!(
+            link(recursive, |_| unreachable!())
+                .unwrap()
+                .callees
+                .is_empty()
+        );
+        // Unresolvable targets and callees that overlap differently fail.
+        let missing = lift_function(&[0xe8, 0xfb, 0x1f, 0, 0, 0xc3], 0x1000).unwrap();
+        assert!(
+            link(missing, callee)
+                .unwrap_err()
+                .contains("no function at 0x3000")
+        );
+        let overlapping = |at: u64| lift_function(&[0x90, 0xc3], at).map_err(|e| e.to_string());
+        let inside = lift_function(&[0xe8, 0xfc, 0xff, 0xff, 0xff, 0xc3], 0x1000).unwrap();
+        assert!(
+            link(inside, overlapping)
+                .unwrap_err()
+                .contains("overlapping")
+        );
     }
 
     #[test]
