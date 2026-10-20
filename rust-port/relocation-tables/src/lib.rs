@@ -223,6 +223,49 @@ pub const fn standard_entry_size(is64: bool, addend: bool) -> u64 {
     }
 }
 
+/// The addresses a canonical RELR table encodes: `bytes` holds whole words
+/// (8 bytes for ELF64, 4 for ELF32) in the file's byte order. This is what
+/// `parseRelrRelocations` yields when the entry size equals the word size and
+/// the table lies inside the file.
+pub fn decode_relr(bytes: &[u8], little: bool, is64: bool) -> Vec<u64> {
+    let width = if is64 { 8 } else { 4 };
+    let bits = 8 * width as u64 - 1;
+    let mut addresses = Vec::new();
+    let mut next = 0u64;
+    for chunk in bytes.chunks_exact(width) {
+        let word = match (is64, little) {
+            (true, true) => u64::from_le_bytes(chunk.try_into().unwrap()),
+            (true, false) => u64::from_be_bytes(chunk.try_into().unwrap()),
+            (false, true) => u64::from(u32::from_le_bytes(chunk.try_into().unwrap())),
+            (false, false) => u64::from(u32::from_be_bytes(chunk.try_into().unwrap())),
+        };
+        let truncate = |address: u64| {
+            if is64 {
+                address
+            } else {
+                u64::from(address as u32)
+            }
+        };
+        // Ghidra treats the first word as an address even when it is odd.
+        if addresses.is_empty() || word & 1 == 0 {
+            addresses.push(truncate(word));
+            next = word.wrapping_add(width as u64);
+        } else {
+            let mut bitmap = word >> 1;
+            let mut at = next;
+            while bitmap != 0 {
+                if bitmap & 1 != 0 {
+                    addresses.push(truncate(at));
+                }
+                bitmap >>= 1;
+                at = at.wrapping_add(width as u64);
+            }
+            next = next.wrapping_add(bits * width as u64);
+        }
+    }
+    addresses
+}
+
 struct Candidate {
     relr: bool,
     addend: bool,
@@ -975,6 +1018,22 @@ mod tests {
     fn relr_reads_one_word_even_when_empty() {
         let offsets: Vec<u64> = relr_context(&[]).iter().map(|r| r.offset).collect();
         assert_eq!(offsets, [0]);
+    }
+
+    #[test]
+    fn canonical_relr_decoder_matches_ghidra_loop() {
+        let mut state = 0x1234_5678_9abc_def0u64;
+        for length in 1..40 {
+            let mut words = Vec::new();
+            for _ in 0..length {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                words.extend_from_slice(&(state >> 3).to_le_bytes());
+            }
+            let ghidra: Vec<u64> = relr_context(&words).iter().map(|r| r.offset).collect();
+            assert_eq!(decode_relr(&words, true, true), ghidra);
+        }
     }
 
     #[test]

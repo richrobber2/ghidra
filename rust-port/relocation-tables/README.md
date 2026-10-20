@@ -96,4 +96,9 @@ Results on this branch:
   tables with 3,221,143 relocations, 292 of them RELR tables and 806 found only
   through the dynamic table. Strict mode accepted all 2,198 with Java's values.
 
+`decode_relr(&bytes, little_endian, is64)` decodes a canonical RELR table on its
+own; the decompiler's image model uses it. A unit test checks it against the
+Ghidra-compatible loop, and it matches `readelf -r` on all 35 system files with a
+`.relr.dyn` section.
+
 Performance has not been measured for this component yet.

@@ -7,6 +7,27 @@ name = "ghidra-elf"
 version = "0.1.0"
 
 [[package]]
+name = "ghidra-elf-dynamic"
+version = "0.1.0"
+dependencies = [
+ "ghidra-elf",
+ "ghidra-elf-sections",
+ "ghidra-elf-segments",
+ "ghidra-elf-symbols",
+]
+
+[[package]]
+name = "ghidra-elf-relocations"
+version = "0.1.0"
+dependencies = [
+ "ghidra-elf",
+ "ghidra-elf-dynamic",
+ "ghidra-elf-sections",
+ "ghidra-elf-segments",
+ "ghidra-elf-symbols",
+]
+
+[[package]]
 name = "ghidra-elf-sections"
 version = "0.1.0"
 dependencies = [
@@ -48,6 +69,7 @@ name = "rust-ghidra"
 version = "0.1.0"
 dependencies = [
  "ghidra-elf",
+ "ghidra-elf-relocations",
  "ghidra-elf-sections",
  "ghidra-elf-segments",
  "ghidra-elf-symbols",

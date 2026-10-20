@@ -85,9 +85,11 @@ to make a function return a plausible value.
 Read-only objects contain the file-backed bytes of nonwritable readable load
 segments, using a conservative x86-64 4096-byte mapping-page contract. Page aliases,
 relocation writes and loader bookkeeping exclude entire intersecting objects.
-Dynamic REL/RELA metadata must be bounded, file-mapped and covered by validated
-allocated relocation sections. Packed/RELR, COPY, unknown relocation formats or
-dynamic tags make the image model unavailable; scalar functions still work.
+Dynamic REL/RELA/RELR metadata must be bounded, file-mapped and covered by validated
+allocated relocation sections. RELR tables are decoded with the
+[relocation-table parser](../relocation-tables/README.md), each entry an 8-byte
+relative write. Android packed tables, COPY, unknown relocation formats or dynamic
+tags make the image model unavailable; scalar functions still work.
 
 A raw numeric VMA never becomes a pointer. Image pointers retain an object ID and
 offset; loads require the entire access inside that object, stores stay stack
