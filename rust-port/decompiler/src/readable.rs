@@ -1686,6 +1686,24 @@ fn signed_as(e: &Expr, plain: bool) -> String {
         e => format!("({} as {})", operand(e, CAST), t.signed()),
     }
 }
+/// `text` without one pair of enclosing parentheses, for a call argument.
+fn bare(text: &str) -> &str {
+    let Some(inner) = text.strip_prefix('(').and_then(|t| t.strip_suffix(')')) else {
+        return text;
+    };
+    let mut depth = 0i32;
+    for c in inner.chars() {
+        depth += match c {
+            '(' => 1,
+            ')' => -1,
+            _ => 0,
+        };
+        if depth < 0 {
+            return text;
+        }
+    }
+    inner
+}
 fn render(e: &Expr) -> String {
     rendered(e, false).0
 }
@@ -1793,9 +1811,9 @@ fn rendered(e: &Expr, typed: bool) -> (String, u8) {
             } else {
                 format!(
                     "{} {} {}",
-                    operand(l, COMPARE - 1),
+                    operand(l, SHIFT),
                     op.symbol(),
-                    operand(r, COMPARE - 1)
+                    operand(r, SHIFT)
                 )
             };
             (text, COMPARE)
@@ -1823,7 +1841,10 @@ fn rendered(e: &Expr, typed: bool) -> (String, u8) {
             } else {
                 "overflowing_add"
             };
-            (format!("{}.{method}({}).1", signed(l), signed(r)), PRIMARY)
+            (
+                format!("{}.{method}({}).1", signed(l), bare(&signed(r))),
+                PRIMARY,
+            )
         }
     }
 }

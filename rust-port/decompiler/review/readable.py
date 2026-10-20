@@ -5,9 +5,13 @@ For each shared library, `rust-ghidra analyze --lang both` writes guarded C and
 Rust; the Rust is readable wherever the readable emitter accepts a function.
 For every function written as readable Rust, the runner calls three versions
 on the same vectors: the readable Rust, the guarded C, and the function itself
-inside the original library, loaded with ctypes. The readable emitter accepts
-only code whose memory is its own stack frame and whose calls are local or
-abort, so calling the original with arbitrary integer arguments is safe.
+inside the original library. The readable emitter accepts only code whose
+memory is its own stack frame and whose calls are local or abort, so the
+original can run from the file's PT_LOAD bytes copied to executable memory,
+without the dynamic linker, relocations or constructors, and be called with
+arbitrary integer arguments. Without relocations a call through a PLT stub
+faults, and the only PLT stubs such code calls are aborting imports (`abort`,
+`__stack_chk_fail`, ...), so the original's SIGSEGV there counts as its abort.
 
 The three must agree on every vector: the same result, or an abort in all
 three. Each vector runs in its own forked child. Results, commands and the
@@ -19,6 +23,7 @@ import argparse
 from collections import Counter
 import ctypes
 import json
+import mmap
 import os
 from pathlib import Path
 import resource
@@ -31,24 +36,28 @@ from rust_backend import DEFAULT_INPUTS, vectors
 FUNCTION = ctypes.CFUNCTYPE(ctypes.c_uint64, *[ctypes.c_uint64] * 6)
 
 
-def load_base(library: str, first_vaddr: int) -> int:
-    """The load bias of `library` in this process, from /proc/self/maps."""
-    real = os.path.realpath(library)
-    for line in Path('/proc/self/maps').read_text().splitlines():
-        fields = line.split()
-        if len(fields) >= 6 and os.path.realpath(fields[5]) == real and int(fields[2], 16) == 0:
-            return int(fields[0].split('-')[0], 16) - (first_vaddr & ~0xfff)
-    raise RuntimeError(f'{library} is not mapped')
+def map_segments(path: str, segments: list[list[int]]) -> int:
+    """Copy each PT_LOAD's file bytes to one executable mapping; the bias."""
+    low = min(vaddr for _, vaddr, _, _ in segments) & ~0xfff
+    high = max(vaddr + memsz for _, vaddr, _, memsz in segments)
+    region = mmap.mmap(-1, high - low, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC)
+    data = Path(path).read_bytes()
+    for offset, vaddr, filesz, _ in segments:
+        region[vaddr - low:vaddr - low + filesz] = data[offset:offset + filesz]
+    MAPPINGS.append(region)
+    return ctypes.addressof(ctypes.c_char.from_buffer(region)) - low
+
+
+MAPPINGS = []
 
 
 def worker() -> int:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     payload = json.load(sys.stdin)
-    library = ctypes.CDLL(payload['library'])
     if 'address' in payload:
-        function = FUNCTION(load_base(payload['library'], payload['first_vaddr']) + payload['address'])
+        function = FUNCTION(map_segments(payload['library'], payload['segments']) + payload['address'])
     else:
-        function = getattr(library, payload['function'])
+        function = getattr(ctypes.CDLL(payload['library']), payload['function'])
         function.argtypes = [ctypes.c_uint64] * 6
         function.restype = ctypes.c_uint64
     for case in payload['inputs']:
@@ -82,12 +91,14 @@ def behaviour(payload: dict, count: int) -> list[str]:
     return results
 
 
-def first_load(path: Path) -> int:
+def segments(path: Path) -> list[list[int]]:
+    """(offset, vaddr, filesz, memsz) of each PT_LOAD, from readelf."""
+    rows = []
     for line in subprocess.run(['readelf', '-W', '-l', str(path)], capture_output=True, text=True).stdout.splitlines():
         fields = line.split()
         if fields[:1] == ['LOAD']:
-            return int(fields[2], 16)
-    raise RuntimeError(f'{path} has no PT_LOAD')
+            rows.append([int(fields[1], 16), int(fields[2], 16), int(fields[4], 16), int(fields[5], 16)])
+    return rows
 
 
 def main() -> int:
@@ -138,15 +149,17 @@ def main() -> int:
                                          'stderr': build.stderr.decode()[-4000:]})
         if failed:
             continue
-        vaddr = first_load(path)
+        loads = segments(path)
         for row in readable:
             name = row['generated_function']
             results = {
                 'rust': behaviour({'library': str(rust_library), 'function': name, 'inputs': inputs}, len(inputs)),
                 'c': behaviour({'library': str(c_library), 'function': name, 'inputs': inputs}, len(inputs)),
                 'native': behaviour({'library': str(path), 'address': int(row['function']['address_hex'], 16),
-                                     'first_vaddr': vaddr, 'inputs': inputs}, len(inputs)),
+                                     'segments': loads, 'inputs': inputs}, len(inputs)),
             }
+            # An aborting import's unrelocated PLT stub faults instead of aborting.
+            results['native'] = ['abort' if r == 'signal 11' else r for r in results['native']]
             report['aborting_vectors'] += results['native'].count('abort')
             if results['rust'] == results['c'] == results['native']:
                 report['matched'] += 1
