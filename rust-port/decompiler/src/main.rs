@@ -9,6 +9,7 @@ use rust_ghidra::{
     image::ImageModel,
     lift::{Instruction, LiftedFunction, Op, lift_function, link},
     plt::AbortingImports,
+    readable,
 };
 use std::{
     fmt::Write,
@@ -102,8 +103,26 @@ fn images_json(objects: &[EmbeddedImage]) -> String {
 }
 fn help() {
     println!(
-        "rust-ghidra functions INPUT\nrust-ghidra decompile INPUT (--function NAME | --address 0xVMA --size N) [--return u8|u16|u32|u64|pointer] [--lang c|rust|both] --output NEW\nrust-ghidra analyze INPUT --output NEW [--max-functions 100] [--return u8|u16|u32|u64|pointer] [--lang c|rust|both]\nStandalone Rust x86-64 little-endian ELF scalar decompiler. No Ghidra/Java runtime.\nOutput is guarded GNU C11 (decompiled.c) and/or edition-2024 Rust (decompiled.rs) using a six-uint64 SysV input model; unsupported code fails explicitly.\nLimits: 128 MiB input, 4096 program headers, 1 MiB/65536 reachable instructions per function."
+        "rust-ghidra functions INPUT\nrust-ghidra decompile INPUT (--function NAME | --address 0xVMA --size N) [--return u8|u16|u32|u64|pointer] [--lang c|rust|both] [--rust-style readable|guarded] --output NEW\nrust-ghidra analyze INPUT --output NEW [--max-functions 100] [--return u8|u16|u32|u64|pointer] [--lang c|rust|both] [--rust-style readable|guarded]\nStandalone Rust x86-64 little-endian ELF scalar decompiler. No Ghidra/Java runtime.\nOutput is guarded GNU C11 (decompiled.c) and/or edition-2024 Rust (decompiled.rs) using a six-uint64 SysV input model; unsupported code fails explicitly.\nLimits: 128 MiB input, 4096 program headers, 1 MiB/65536 reachable instructions per function."
     );
+}
+
+/// How Rust output is written: readable Rust where the readable emitter
+/// accepts the function, otherwise (or always, for `guarded`) the guarded
+/// machine-model form.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RustStyle {
+    Readable,
+    Guarded,
+}
+impl RustStyle {
+    fn parse(value: &std::ffi::OsStr) -> Result<Self, String> {
+        match value.to_str() {
+            Some("readable") => Ok(Self::Readable),
+            Some("guarded") => Ok(Self::Guarded),
+            _ => Err("--rust-style requires readable or guarded".into()),
+        }
+    }
 }
 
 /// Which generated sources to write; C alone keeps the original outputs.
@@ -187,22 +206,44 @@ fn emit_all(
     image: Result<&ImageModel, &str>,
     return_kind: ReturnKind,
     lang: Lang,
-) -> Result<(Option<Emitted>, Option<Emitted>), String> {
+    style: RustStyle,
+) -> Result<(Option<Emitted>, Option<Emitted>, String), String> {
     let c = if lang.c() {
         Some(emit_c_with_image(ir, name, image, return_kind)?)
     } else {
         None
     };
-    let rust = if lang.rust() {
+    // The guarded form is always built: its checks decide which functions
+    // are accepted, so both styles accept the same set.
+    let mut rust = if lang.rust() {
         Some(emit_rust_with_image(ir, name, image, return_kind)?)
     } else {
         None
     };
-    Ok((c, rust))
+    // Manifest fields describing the Rust form, for a row or a manifest.
+    let mut note = String::new();
+    if let Some(emitted) = &mut rust {
+        note = match style {
+            RustStyle::Guarded => ",\"rust_style\":\"guarded\"".into(),
+            RustStyle::Readable => match readable::emit(ir, &emitted.function_name, return_kind) {
+                Ok(text) => {
+                    emitted.c = text;
+                    emitted.image_objects.clear();
+                    ",\"rust_style\":\"readable\"".into()
+                }
+                Err(error) => format!(
+                    ",\"rust_style\":\"guarded\",\"readable_error\":{}",
+                    quote(&error)
+                ),
+            },
+        };
+    }
+    Ok((c, rust, note))
 }
 
 fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
     let (mut output, mut limit, mut return_option, mut lang) = (None, 100usize, None, None);
+    let mut style = None;
     let mut index = 0;
     while index < args.len() {
         let key = args[index].to_str().ok_or("option must be UTF-8")?;
@@ -210,6 +251,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
         match key {
             "--output" if output.is_none() => output = Some(PathBuf::from(value)),
             "--lang" if lang.is_none() => lang = Some(Lang::parse(value)?),
+            "--rust-style" if style.is_none() => style = Some(RustStyle::parse(value)?),
             "--return" if return_option.is_none() => {
                 return_option = Some(ReturnKind::parse(
                     value.to_str().ok_or("return kind must be UTF-8")?,
@@ -231,6 +273,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
     }
     let return_kind = return_option.unwrap_or(ReturnKind::U64);
     let lang = lang.unwrap_or(Lang::C);
+    let style = style.unwrap_or(RustStyle::Readable);
     let output = output.ok_or("--output NEW is required")?;
     if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -263,11 +306,12 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
                     image.as_ref().map_err(|e| e.as_str()),
                     return_kind,
                     lang,
+                    style,
                 )
             })();
             attempted += 1;
             match result {
-                Ok((c_emitted, rust_emitted)) => {
+                Ok((c_emitted, rust_emitted, note)) => {
                     let (c_len, rust_len) = (
                         c_emitted.as_ref().map_or(0, |e| e.c.len()),
                         rust_emitted.as_ref().map_or(0, |e| e.c.len()),
@@ -290,7 +334,7 @@ fn analyze(input: &Path, args: &[std::ffi::OsString]) -> Result<u8, String> {
                         c.push_str(&emitted.c);
                     }
                     accepted += 1;
-                    rows.push(format!("{{\"function\":{},\"status\":\"ok\",\"generated_function\":{},\"instruction_count\":{},\"image_objects\":{}}}",function_json(f),quote(&emitted.function_name),emitted.instruction_count,images_json(&emitted.image_objects)));
+                    rows.push(format!("{{\"function\":{},\"status\":\"ok\",\"generated_function\":{},\"instruction_count\":{},\"image_objects\":{}{note}}}",function_json(f),quote(&emitted.function_name),emitted.instruction_count,images_json(&emitted.image_objects)));
                 }
                 Err(error) => rows.push(format!(
                     "{{\"function\":{},\"status\":\"unsupported\",\"error\":{}}}",
@@ -380,6 +424,7 @@ fn run() -> Result<u8, String> {
     }
     let (mut name, mut address, mut size, mut output, mut return_option, mut lang) =
         (None, None, None, None, None, None);
+    let mut style = None;
     let mut index = 2;
     while index < args.len() {
         let key = args[index].to_str().ok_or("option must be UTF-8")?;
@@ -403,6 +448,7 @@ fn run() -> Result<u8, String> {
             }
             "--output" if output.is_none() => output = Some(PathBuf::from(value)),
             "--lang" if lang.is_none() => lang = Some(Lang::parse(value)?),
+            "--rust-style" if style.is_none() => style = Some(RustStyle::parse(value)?),
             "--return" if return_option.is_none() => {
                 return_option = Some(ReturnKind::parse(
                     value.to_str().ok_or("return kind must be UTF-8")?,
@@ -413,6 +459,7 @@ fn run() -> Result<u8, String> {
         index += 2;
     }
     let lang = lang.unwrap_or(Lang::C);
+    let style = style.unwrap_or(RustStyle::Readable);
     if (name.is_some() && (address.is_some() || size.is_some()))
         || (name.is_none() && (address.is_none() || size.is_none()))
     {
@@ -427,7 +474,7 @@ fn run() -> Result<u8, String> {
         .map_err(|e| format!("output must be new ({}): {e}", output.display()))?;
     let mut selected = None;
     #[allow(clippy::type_complexity)]
-    let result = (|| -> Result<(Option<String>, Option<String>, String, usize, String, String), (String, String)> {
+    let result = (|| -> Result<(Option<String>, Option<String>, String, usize, String, String, String), (String, String)> {
         let bytes = load(&input).map_err(|e| ("error".into(), e))?;
         let elf = ElfImage::parse(&bytes).map_err(|e| ("unsupported".into(), e))?;
         let function = if let Some(name) = name {
@@ -453,12 +500,13 @@ fn run() -> Result<u8, String> {
         let lifted = lift_linked(&elf, &AbortingImports::build(&elf), function_bytes, function.address)
             .map_err(|e| ("unsupported".into(), e))?;
         let image = ImageModel::build(&elf);
-        let (c_emitted, rust_emitted) = emit_all(
+        let (c_emitted, rust_emitted, note) = emit_all(
             &lifted,
             &function.name,
             image.as_ref().map_err(|e| e.as_str()),
             return_kind,
             lang,
+            style,
         )
         .map_err(|e| ("unsupported".into(), e))?;
         let c = c_emitted.as_ref().map(|e| e.c.clone());
@@ -486,6 +534,7 @@ fn run() -> Result<u8, String> {
             emitted.instruction_count,
             ir,
             images_json(&emitted.image_objects),
+            note,
         ))
     })();
     let function = selected
@@ -493,7 +542,7 @@ fn run() -> Result<u8, String> {
         .map(function_json)
         .unwrap_or("null".into());
     let (manifest, exit) = match result {
-        Ok((c, rust, generated, count, ir, images)) => {
+        Ok((c, rust, generated, count, ir, images, note)) => {
             if let Some(c) = c {
                 std::fs::write(output.join("decompiled.c"), c).map_err(|e| e.to_string())?;
             }
@@ -503,7 +552,7 @@ fn run() -> Result<u8, String> {
             std::fs::write(output.join("ir.json"), ir).map_err(|e| e.to_string())?;
             (
                 format!(
-                    "{{\"status\":\"ok\",\"backend\":\"native-rust\",\"input\":{},\"function\":{function},\"generated_function\":{},\"instruction_count\":{count},\"image_objects\":{images},\"guarded\":true,\"output_files\":{{{},\"ir\":\"ir.json\"}},\"scope\":\"x86-64 scalar code with direct local calls, six uint64 SysV arguments; bounded stack and immutable file-backed image objects; unknown state/provenance aborts\"}}\n",
+                    "{{\"status\":\"ok\",\"backend\":\"native-rust\",\"input\":{},\"function\":{function},\"generated_function\":{},\"instruction_count\":{count},\"image_objects\":{images}{note},\"guarded\":true,\"output_files\":{{{},\"ir\":\"ir.json\"}},\"scope\":\"x86-64 scalar code with direct local calls, six uint64 SysV arguments; bounded stack and immutable file-backed image objects; unknown state/provenance aborts\"}}\n",
                     quote(&input.display().to_string()),
                     quote(&generated),
                     lang.files()

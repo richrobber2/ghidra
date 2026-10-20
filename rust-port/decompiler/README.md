@@ -88,6 +88,63 @@ embedded at the top of `decompiled.rs`, so the file builds on its own with
 bytes become `static` arrays. A guard failure calls `std::process::abort`, as
 the C `rg_fail` does. The default output is still C, byte-identical to before.
 
+## Readable Rust
+
+By default, `--lang rust` writes a function as readable Rust whenever
+`src/readable.rs` can express it exactly, and keeps the guarded form above
+otherwise; `--rust-style guarded` always keeps the guarded form. The C output
+and the set of accepted functions do not change: the guarded form is always
+built first, and its checks decide which functions are accepted. The manifest
+row says which form each function got (`rust_style`) and, for a guarded one, why
+the readable emitter declined it (`readable_error`).
+
+The readable emitter runs the lifted IR symbolically along every path from the
+entry. Arguments are `a0` (RDI) to `a5` (R9), and values are plain Rust
+expressions with wrapping arithmetic, conversions between `u8` to `u64`, and
+signed comparisons as `(x as i32) < (y as i32)`. Values larger than a few
+operations are bound with `let`. Branches become `if` blocks, conditional moves
+become `if` expressions, and natural loops become `loop` blocks over `let mut`
+variables named after the registers and stack slots they carry (`rax_1`,
+`local_18_1`), updated together at each back edge. A small example, from
+`fixtures/scalar.c` at -O2:
+
+```rust
+pub extern "C" fn decompiled_loop_xor_12d0_3a(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
+    let v0: u64 = a2.wrapping_add(u64::from((a0 as u32) & 7).wrapping_add(1));
+    let mut rax_1: u64 = v0;
+    let mut rdx_1: u64 = a2;
+    let mut rsi_1: u64 = a1;
+    loop {
+        let v1: u64 = rsi_1 >> 3 ^ (rsi_1.wrapping_add(rsi_1) ^ rax_1);
+        let v2: bool = a2 == rax_1.wrapping_sub(1);
+        (rax_1, rdx_1, rsi_1) = (rax_1.wrapping_sub(1), rsi_1.wrapping_add(rsi_1) ^ rax_1, v1);
+        if v2 {
+            break;
+        }
+    }
+    return a4.wrapping_add(a5).wrapping_add(a3).wrapping_add(rsi_1);
+}
+```
+
+A function keeps the guarded form when the readable emitter cannot show that a
+value is defined. Its result and branch conditions must not depend on a
+register's entry value (other than the arguments) or the canary, except where a
+value cancels against itself; stack loads must read what the same path stored;
+and only the condition flags the last flag-setting operation defines exactly may
+be read. It also keeps the guarded form for memory outside its own stack frame
+(image tables included, for now), pointer results, recursion, irreducible
+loops, loops with more than one exit target, loops that call, push or pop, and
+functions over a 4,096-step budget. Direct calls to linked functions are
+inlined.
+
+`review/readable.py` checks the readable functions three ways on real shared
+libraries. It calls the readable Rust, the guarded C and the original function
+inside the library (loaded with ctypes) on the same vectors, and requires the
+same result or an abort from all three. The original can be called with any
+integer arguments because the readable emitter only accepts code that touches
+its own stack frame. `review/validate.py --rustc` checks the readable output of
+the scalar fixtures against independent formulas, as before.
+
 ## Direct calls
 
 A direct `call` or a jump out of the function (a tail call) to the start of
