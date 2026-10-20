@@ -1,0 +1,48 @@
+{
+  "commit": "48bf91c252e1389e6becfa5674998177b0193151",
+  "pinned_reference_sha256": {
+    "/workspace/ghidra/Ghidra/Processors/x86/src/main/java/ghidra/app/util/bin/format/elf/relocation/X86_64_ElfRelocationHandler.java": "dbdde99693ddfb89deb0d1b11ef367f9b9a8c80cf38a7ba6128faeb6a47ecfd4",
+    "/workspace/ghidra/Ghidra/Processors/x86/src/main/java/ghidra/app/util/bin/format/elf/relocation/X86_64_ElfRelocationType.java": "e25b8190426982fc4cfb9e54f83bef4f56a64b5d28d040a0e565f4cd7ddaae22",
+    "/workspace/ghidra/Ghidra/Processors/x86/src/main/java/ghidra/app/util/bin/format/elf/relocation/X86_64_ElfRelocationContext.java": "e0bb81afd8a29ffe33e7ba9827a79d76be2ce7bb9ded7632c5d782b7db01feae",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/AbstractElfRelocationHandler.java": "f91fb726b7e56a1495fce08e3cf564b0d62cf7708471c33131af025aec95bfba",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationHandler.java": "bc744ce00841bd6cb53a4165c07138d92f71a08ff551f4ccece3c842b5320491",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfRelocationContext.java": "2430112c39273075dd96fd1fc55bdbfa3705b923ad55a7cc54d8bd66228d3e6f",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/relocation/ElfGotRelocationContext.java": "8ad2422970bd78bf3a26a46b9dbb49a059043285484b24ab3ac83ac7e37b2907",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocation.java": "cd17a9dc4ef0f532824e0f027bd9eaaf0482c5bd12d6399f036e84c9ff5299bf",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfRelocationTable.java": "ff87bab0c57e2cad8f51584e70e682bff21b6dd2e0698a8797b34f5d7406951d",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbol.java": "efa77781770701fc159ac06681dfb5f6e357ca03654899f8ac9526a206b5204c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolTable.java": "362cb819a386654443b980aad1e65cc2b1ffc7831254976438ccce723d8343ff",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfSymbolNameUtils.java": "dc01672f4a307eea0a46ff369915877080d6f7947c200e64a5043cc529344b7c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfLoadHelper.java": "b62d1af64669cef036d25ed64667a2d5bdaee9fe541148ef5d0244367c6fd968",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfHeader.java": "07977505cb2591eb4f47ec0d5eaa7c0aa6eaf1c26736e0d8103c050b7a508b0c",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/extend/ElfLoadAdapter.java": "3641bee17ab7d1800a4265023422b536470fce6fe4a20fcea7fdfc1acb90d7a8",
+    "/workspace/ghidra/Ghidra/Features/Base/src/main/java/ghidra/app/util/opinion/ElfProgramBuilder.java": "1a1195c84c57adff8b57d18da8f2c5582a32a7892c4133fc3a78e1c01bd01351",
+    "/workspace/ghidra/Ghidra/Framework/SoftwareModeling/src/main/java/ghidra/program/model/symbol/SymbolUtilities.java": "7fe094a7000bc33b4b00d7f15ce04f2e5a7a16864ba544a5b800a08f5c843c56",
+    "/workspace/ghidra/Ghidra/Framework/SoftwareModeling/src/main/java/ghidra/program/model/address/GenericAddress.java": "69de61368bed9ef673d08f42ce114098af676278159eda27577081dca911ae9c",
+    "/workspace/ghidra/Ghidra/Framework/SoftwareModeling/src/main/java/ghidra/program/model/address/AbstractAddressSpace.java": "dcdf3a9bba1ac6950f6ddf14ceb5b2f07b01bb8b54f57a4028b44d1db4b2387e",
+    "/workspace/ghidra/Ghidra/Framework/SoftwareModeling/src/main/java/ghidra/program/model/reloc/RelocationResult.java": "794493777c4ccb3eff6c644f11173fdadc9497ffee92cacce99517245b88c8bf",
+    "/workspace/ghidra-rust-port/Cargo.toml": "006b0b9a7e20bf8eed366b804ccaaabc936f089b41dd88e7fadb68f278c8c022",
+    "/workspace/ghidra-rust-port/src/lib.rs": "df0256f7a5769c8f995c3dc5db44df55678e33812080e6e15da6b3085d1a9acd",
+    "/workspace/ghidra-rust-port/program-headers/src/lib.rs": "5964df1625c6c77aca4bfb8f415b80c719f24f3155a70b46aa4bebd0c5783887",
+    "/workspace/ghidra-rust-port/section-headers/src/lib.rs": "e6fd6ccd5ae60661601ac1d655f64ae346198f27717296d19669e896eac22349",
+    "/workspace/ghidra-rust-port/symbol-tables/src/lib.rs": "4a524b381fbf8f12d19f1cd39219f83af9c697e45e08691df84f2e0da55f4509",
+    "/workspace/ghidra-rust-port/dynamic-table/src/lib.rs": "2ea6a0e3664464022906c8bb0c7205b2fecd8f5bc349283f4717d1e6c2eb5de4",
+    "/workspace/ghidra-rust-port/relocation-tables/Cargo.toml": "53593a7f57e5a4bcaa371f97ac0bdf226b18f44cc0077b6c172ae7f5a7680f99",
+    "/workspace/ghidra-rust-port/relocation-tables/src/lib.rs": "1a9b9ec6e88be418d6a5287f1492d2d4a053518debd629367444eb7cbc13a89b"
+  },
+  "boundary": {
+    "handler": "X86_64_ElfRelocationHandler.relocate, reached through ElfRelocationContext.processRelocation and AbstractElfRelocationHandler.relocate",
+    "context": "X86_64_ElfRelocationContext and ElfGotRelocationContext: getSymbolValue, getGOTValue, getGotEntryAddress, allocateGot, computeRequiredGotSize, requiresGotEntry",
+    "parse": "ElfHeader constructor and its private parse steps up to parseRelocationTables(), as the relocation-table parser runs them",
+    "driver": "ElfProgramBuilder.processRelocationTable and processRelocationTableEntries, without table markup or the program relocation table",
+    "model": "Program, Memory, BookmarkManager and ElfLoadHelper are proxies implementing the memory and symbol model of src/model.rs",
+    "excluded": [
+      "ElfProgramBuilder memory-block, symbol and EXTERNAL-block construction (replaced by the model)",
+      "ElfGotRelocationContext.createGot at dispose(): the %got block and its pointer data; gotMap entries are reported instead",
+      "applyComponentOffsetPointer and the EXTERNAL bookmark, which Ghidra skips when getBlock reports no block",
+      "relocatable (ET_REL) files, whose section placement belongs to the loader",
+      "ELF32 (x32) files",
+      "non-ASCII symbol-name validity beyond the code-point ranges listed in src/lib.rs"
+    ]
+  }
+}

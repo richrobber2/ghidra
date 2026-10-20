@@ -31,6 +31,10 @@ def signed(value: int, width: int) -> int:
     return value - (1 << width) if value & (1 << (width - 1)) else value
 
 
+def helper_mix(x: int, y: int) -> int:
+    return ((x ^ ((y << 7) & MASK)) + 0x1234) & MASK
+
+
 def expected(name: str, args: list[int]) -> int:
     """Independent integer formulas; all narrowing/wrapping is explicit."""
     a, b, c, d, e, f = args
@@ -78,6 +82,16 @@ def expected(name: str, args: list[int]) -> int:
         n = d & 31
         x = ((x << n) | (x >> ((-n) & 31))) & U32
         value = x + e - f
+    elif name == "call_helper":
+        value = helper_mix(a, b) + helper_mix(c, d) * 3 + (e ^ f)
+    elif name == "call_recursive":
+        value = b
+        product = 1
+        for i in range(2, (a & 15) + 1):
+            product = (product * i) & MASK
+        value += product
+    elif name == "call_tail":
+        value = helper_mix(a ^ f, b)
     else:
         raise ValueError(f"no independent formula for {name}")
     return value & MASK

@@ -27,6 +27,8 @@ const SHF_ALLOC: u64 = 2;
 const SHT_RELA: u32 = 4;
 const SHT_REL: u32 = 9;
 const SHT_RELR: u32 = 19;
+const SHT_DYNSYM: u32 = 11;
+const R_X86_64_COPY: u32 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageRegion {
@@ -45,6 +47,7 @@ pub struct ImageLocation {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImageModel {
     regions: Vec<ImageRegion>,
+    fixed_addresses: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -158,7 +161,7 @@ impl ImageModel {
             ));
         }
 
-        validate_dynamic(image, &mut candidates)?;
+        let symbols = validate_dynamic(image, &mut candidates)?;
         for section in image.sections() {
             if !matches!(section.section_type, SHT_REL | SHT_RELA | SHT_RELR)
                 || section.flags & SHF_ALLOC == 0
@@ -180,8 +183,13 @@ impl ImageModel {
             }
             for raw in entries.chunks_exact(section.entry_size as usize) {
                 let address = u64_at(raw, 0);
-                let kind = u64_at(raw, 8) as u32;
-                let width = relocation_width(kind)?;
+                let info = u64_at(raw, 8);
+                let kind = info as u32;
+                let width = if kind == R_X86_64_COPY {
+                    copy_width(image, symbols, info >> 32)?
+                } else {
+                    relocation_width(kind)?
+                };
                 if width != 0 {
                     block_span(&mut candidates, address, width, "relocation write")?;
                 }
@@ -215,7 +223,16 @@ impl ImageModel {
                 bytes,
             });
         }
-        Ok(Self { regions })
+        Ok(Self {
+            regions,
+            fixed_addresses: image.fixed_addresses(),
+        })
+    }
+
+    /// Whether absolute (non-RIP) displacements name image addresses: true
+    /// only for ET_EXEC, whose load addresses are fixed.
+    pub fn fixed_addresses(&self) -> bool {
+        self.fixed_addresses
     }
 
     pub fn regions(&self) -> &[ImageRegion] {
@@ -304,8 +321,6 @@ fn block_span(
     Ok(())
 }
 
-// System V AMD64 relocation storage widths. COPY depends on a symbol size,
-// unknown extensions might write more bytes, and both therefore fail closed.
 /// The exact relocation count of a RELR table, without decoding it: the first
 /// and every even word is one address, an odd word one per set bitmap bit.
 fn relr_count(bytes: &[u8]) -> u64 {
@@ -323,6 +338,30 @@ fn relr_count(bytes: &[u8]) -> u64 {
         .sum()
 }
 
+/// R_X86_64_COPY copies a shared object's variable over the executable's
+/// definition at r_offset. The loader copies at most the size of the
+/// executable's own symbol, which it finds through DT_SYMTAB, so that symbol's
+/// `st_size` bounds the write. The symbol must lie in the validated `.dynsym`.
+fn copy_width(
+    image: &ElfImage<'_>,
+    symbols: Option<DynamicSymbols>,
+    index: u64,
+) -> Result<u64, String> {
+    let symbols = symbols.ok_or("R_X86_64_COPY requires a validated DT_SYMTAB")?;
+    if index == 0 || index >= symbols.count {
+        return Err("R_X86_64_COPY names a symbol outside DT_SYMTAB".into());
+    }
+    let record = file_slice(
+        image.file_bytes(),
+        symbols.offset + index * 24,
+        24,
+        "R_X86_64_COPY symbol",
+    )?;
+    Ok(u64_at(record, 16))
+}
+
+// System V AMD64 relocation storage widths. COPY's width is a symbol size
+// (copy_width); unknown extensions might write more bytes and fail closed.
 fn relocation_width(kind: u32) -> Result<u64, String> {
     match kind {
         0 | 35 => Ok(0), // NONE, TLSDESC_CALL marker.
@@ -331,9 +370,6 @@ fn relocation_width(kind: u32) -> Result<u64, String> {
         12 | 13 => Ok(2),
         14 | 15 => Ok(1),
         36 => Ok(16), // TLSDESC stores two machine words.
-        5 => Err(
-            "R_X86_64_COPY relocation requires unsupported symbol-size relocation modeling".into(),
-        ),
         _ => Err(format!("unsupported x86-64 relocation kind {kind}")),
     }
 }
@@ -354,6 +390,16 @@ struct DynamicRelocations {
     relr: Option<u64>,
     relrsz: Option<u64>,
     relrent: Option<u64>,
+    symtab: Option<u64>,
+    syment: Option<u64>,
+}
+
+/// The dynamic symbol table the loader reads through DT_SYMTAB, located in
+/// the one allocated `.dynsym` section that starts there.
+#[derive(Clone, Copy)]
+struct DynamicSymbols {
+    offset: u64,
+    count: u64,
 }
 
 fn set_once(slot: &mut Option<u64>, value: u64, name: &str) -> Result<(), String> {
@@ -363,8 +409,12 @@ fn set_once(slot: &mut Option<u64>, value: u64, name: &str) -> Result<(), String
     Ok(())
 }
 
-fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Result<(), String> {
+fn validate_dynamic(
+    image: &ElfImage<'_>,
+    candidates: &mut [Candidate],
+) -> Result<Option<DynamicSymbols>, String> {
     let mut dynamic_seen = false;
+    let mut symbols = None;
     for segment in image
         .program_headers()
         .iter()
@@ -413,11 +463,13 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
                 }
                 2 => set_once(&mut dynamic.pltrelsz, value, "DT_PLTRELSZ")?,
                 3 => block_span(candidates, value, 24, "loader-reserved GOT slots")?,
+                6 => set_once(&mut dynamic.symtab, value, "DT_SYMTAB")?,
                 7 => set_once(&mut dynamic.rela, value, "DT_RELA")?,
                 8 => set_once(&mut dynamic.relasz, value, "DT_RELASZ")?,
                 9 => set_once(&mut dynamic.relaent, value, "DT_RELAENT")?,
                 17 => set_once(&mut dynamic.rel, value, "DT_REL")?,
                 18 => set_once(&mut dynamic.relsz, value, "DT_RELSZ")?,
+                11 => set_once(&mut dynamic.syment, value, "DT_SYMENT")?,
                 19 => set_once(&mut dynamic.relent, value, "DT_RELENT")?,
                 20 => set_once(&mut dynamic.pltrel, value, "DT_PLTREL")?,
                 23 => set_once(&mut dynamic.jmprel, value, "DT_JMPREL")?,
@@ -434,8 +486,10 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
                 // Ordinary ELF and GNU metadata which does not add a new
                 // relocation encoding. Everything else fails closed.
                 1
-                | 4..=6
-                | 10..=16
+                | 4
+                | 5
+                | 10
+                | 12..=16
                 | 21
                 | 24..=30
                 | 32..=34
@@ -462,6 +516,12 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
             || dynamic.relrent.is_some_and(|entry| entry != 8)
         {
             return Err("dynamic relocation entry size is noncanonical".into());
+        }
+        if dynamic.syment.is_some_and(|entry| entry != 24) {
+            return Err("DT_SYMENT is noncanonical".into());
+        }
+        if let Some(address) = dynamic.symtab {
+            symbols = dynamic_symbols(image, address);
         }
         validate_dynamic_table(image, dynamic.rela, dynamic.relasz, SHT_RELA, "DT_RELA")?;
         validate_dynamic_table(image, dynamic.rel, dynamic.relsz, SHT_REL, "DT_REL")?;
@@ -496,7 +556,29 @@ fn validate_dynamic(image: &ElfImage<'_>, candidates: &mut [Candidate]) -> Resul
             return Err("DT_PLTREL has no bounded jump relocation table".into());
         }
     }
-    Ok(())
+    Ok(symbols)
+}
+
+/// None when DT_SYMTAB is not exactly a file-mapped `.dynsym`; only a COPY
+/// relocation needs it, and then fails closed.
+fn dynamic_symbols(image: &ElfImage<'_>, address: u64) -> Option<DynamicSymbols> {
+    let mut found = image.sections().iter().filter(|section| {
+        section.section_type == SHT_DYNSYM
+            && section.flags & SHF_ALLOC != 0
+            && section.entry_size == 24
+            && section.address == address
+            && section.size % 24 == 0
+    });
+    let section = found.next()?;
+    if found.next().is_some()
+        || map_file_range(image, address, section.size).ok()? != section.offset
+    {
+        return None;
+    }
+    Some(DynamicSymbols {
+        offset: section.offset,
+        count: section.size / 24,
+    })
 }
 
 fn validate_relative_prefix(
@@ -758,6 +840,49 @@ mod tests {
     }
 
     #[test]
+    fn absolute_loads_name_image_objects_only_in_fixed_executables() {
+        use crate::emit::{ReturnKind, emit_c_with_image};
+        use crate::lift::lift_function;
+        let emit = |code: &[u8], elf_type: u16| {
+            let mut bytes = fixture();
+            put16(&mut bytes, 16, elf_type);
+            let image = ElfImage::parse(&bytes).unwrap();
+            let model = ImageModel::build(&image).unwrap();
+            assert_eq!(model.fixed_addresses(), elf_type == 2);
+            let lifted = lift_function(code, 0x400000).unwrap();
+            emit_c_with_image(&lifted, "f", Ok(&model), ReturnKind::U64).map(|out| out.c)
+        };
+        // movzbl 0x500200(%rdi),%eax; ret
+        let indexed = [0x0f, 0xb6, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        let c = emit(&indexed, 2).unwrap();
+        assert!(c.contains("rg_lea_from(&s,rg_image(&s,1,UINT64_C(0x0)),7,1)"));
+        // ET_DYN code can only name its image RIP-relatively.
+        assert!(emit(&indexed, 3).unwrap_err().contains("external memory"));
+        // movzbl 0x500200(,%rdi,4),%eax; ret
+        let scaled = [0x0f, 0xb6, 0x04, 0xbd, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&scaled, 2).unwrap().contains(",7,4)"));
+        // mov 0x500200,%rax; ret (no register): a whole-width bounded read.
+        let direct = [0x48, 0x8b, 0x04, 0x25, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(
+            emit(&direct, 2)
+                .unwrap()
+                .contains("rg_load(&s,rg_image(&s,1,UINT64_C(0x0)),64)")
+        );
+        // Outside the image, two registers, stores and LEA keep the old model.
+        let outside = [0x0f, 0xb6, 0x87, 0x00, 0x00, 0x70, 0x00, 0xc3];
+        assert!(emit(&outside, 2).unwrap_err().contains("external memory"));
+        // movzbl 0x500200(%rdi,%rsi),%eax
+        let two = [0x0f, 0xb6, 0x84, 0x37, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&two, 2).unwrap_err().contains("external memory"));
+        // mov %al,0x500200(%rdi)
+        let store = [0x88, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(emit(&store, 2).is_err());
+        // lea 0x500200(%rdi),%rax stays arithmetic on a number.
+        let lea = [0x48, 0x8d, 0x87, 0x00, 0x02, 0x50, 0x00, 0xc3];
+        assert!(!emit(&lea, 2).unwrap().contains("rg_image(&s"));
+    }
+
+    #[test]
     fn readonly_regions_exclude_bss_and_resolve_bounded_pointers() {
         let bytes = fixture();
         let image = ElfImage::parse(&bytes).unwrap();
@@ -989,6 +1114,62 @@ mod tests {
                 .unwrap_err()
                 .contains("validated allocated")
         );
+    }
+
+    /// dynamic_fixture with one RELA entry of `kind` against dynamic symbol 1,
+    /// whose `st_size` is `size`, found through DT_SYMTAB at 0x6004b0.
+    fn copy_fixture(target: u64, size: u64) -> Vec<u8> {
+        let mut bytes = dynamic_fixture();
+        put64(&mut bytes, 1032, (1 << 32) | u64::from(R_X86_64_COPY));
+        put64(&mut bytes, 1024, target);
+        let base = 64 + 3 * 56;
+        put64(&mut bytes, base + 32, 96);
+        put64(&mut bytes, base + 40, 96);
+        put64(&mut bytes, 1136, 6);
+        put64(&mut bytes, 1144, 0x6004b0);
+        put64(&mut bytes, 1152, 11);
+        put64(&mut bytes, 1160, 24);
+        put64(&mut bytes, 1200 + 24 + 16, size);
+        put16(&mut bytes, 60, 4);
+        section(&mut bytes, 2, SHT_DYNSYM, SHF_ALLOC, 0x6004b0, 1200, 48, 24);
+        put32(&mut bytes, 1536 + 2 * 64 + 40, 3);
+        section(&mut bytes, 3, 3, 0, 0, 1248, 1, 0);
+        bytes
+    }
+
+    #[test]
+    fn copy_relocations_exclude_their_symbol_extent() {
+        let regions = |bytes: &[u8]| {
+            ImageModel::build(&ElfImage::parse(bytes).unwrap()).map(|model| model.regions().len())
+        };
+        // The write [target, target + st_size) decides which objects survive.
+        assert_eq!(regions(&copy_fixture(0x700000, 64)), Ok(2));
+        assert_eq!(regions(&copy_fixture(0x500280, 8)), Ok(1));
+        assert_eq!(regions(&copy_fixture(0x500280, 0)), Ok(2));
+        assert_eq!(regions(&copy_fixture(0x500100, 0x100)), Ok(2));
+        assert_eq!(regions(&copy_fixture(0x500100, 0x101)), Ok(1));
+        assert!(
+            regions(&copy_fixture(u64::MAX - 3, 8))
+                .unwrap_err()
+                .contains("overflows")
+        );
+        // Symbol 0 and symbols past .dynsym are not a bounded size.
+        let mut bytes = copy_fixture(0x700000, 8);
+        put64(&mut bytes, 1032, u64::from(R_X86_64_COPY));
+        assert!(regions(&bytes).unwrap_err().contains("outside DT_SYMTAB"));
+        let mut bytes = copy_fixture(0x700000, 8);
+        put64(&mut bytes, 1032, (2 << 32) | u64::from(R_X86_64_COPY));
+        assert!(regions(&bytes).unwrap_err().contains("outside DT_SYMTAB"));
+        // DT_SYMTAB must be exactly the start of the allocated .dynsym.
+        let mut bytes = copy_fixture(0x700000, 8);
+        put64(&mut bytes, 1144, 0x6004c8);
+        assert!(regions(&bytes).unwrap_err().contains("validated DT_SYMTAB"));
+        let mut bytes = copy_fixture(0x700000, 8);
+        put64(&mut bytes, 1536 + 2 * 64 + 8, 0);
+        assert!(regions(&bytes).unwrap_err().contains("validated DT_SYMTAB"));
+        let mut bytes = copy_fixture(0x700000, 8);
+        put64(&mut bytes, 1160, 16);
+        assert!(regions(&bytes).unwrap_err().contains("DT_SYMENT"));
     }
 
     #[test]

@@ -1,0 +1,18 @@
+Ghidra x86-64 ELF relocation handler Rust port
+
+This component adapts X86_64_ElfRelocationHandler, X86_64_ElfRelocationType,
+X86_64_ElfRelocationContext, AbstractElfRelocationHandler, ElfRelocationHandler,
+ElfRelocationContext, ElfGotRelocationContext, ElfSymbolNameUtils and the
+relocation loop of ElfProgramBuilder from Ghidra commit
+48bf91c252e1389e6becfa5674998177b0193151 of this repository. The original Ghidra
+sources and the prior Rust components remain unchanged. This is not an official
+release.
+
+Upstream Ghidra notice:
+
+Ghidra
+This product includes software developed at National Security Agency
+(https://www.nsa.gov).
+Portions were created by the U.S. Government and are not subject to U.S.
+copyright protections under 17 U.S.C. Section 105. Remaining portions are
+copyright their respective authors and distributed under applicable licenses.

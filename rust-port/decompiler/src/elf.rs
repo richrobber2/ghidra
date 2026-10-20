@@ -60,6 +60,9 @@ pub(crate) struct Section {
 #[derive(Debug)]
 pub struct ElfImage<'a> {
     bytes: &'a [u8],
+    /// ET_EXEC: VMAs are fixed at link time, so absolute addresses in code are
+    /// image addresses. ET_DYN code may only name its image RIP-relatively.
+    fixed_addresses: bool,
     entry: u64,
     loads: Vec<ProgramHeader>,
     program_headers: Vec<ProgramHeader>,
@@ -131,6 +134,7 @@ impl<'a> ElfImage<'a> {
         }
 
         let mut image = Self {
+            fixed_addresses: header.elf_type == 2,
             bytes,
             entry: header.entry,
             loads,
@@ -390,6 +394,10 @@ impl<'a> ElfImage<'a> {
 
     pub fn functions(&self) -> &[Function] {
         &self.functions
+    }
+
+    pub(crate) fn fixed_addresses(&self) -> bool {
+        self.fixed_addresses
     }
 
     pub(crate) fn file_bytes(&self) -> &'a [u8] {

@@ -60,14 +60,15 @@ coverage or a function limit returns 1 and stays visible as `status:partial` and
 | Layer | Current coverage |
 |---|---|
 | Input | ELF64, little-endian x86-64, ET_EXEC/ET_DYN; strict program/section bounds, SYMTAB/DYNSYM, extended indices, executable file-backed mappings |
-| Instructions | Scalar integer moves/extensions, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, alignment NOPs |
+| Instructions | Scalar integer moves/extensions, the `%fs:0x28` stack-protector canary, LEA arithmetic, add/ADC/sub/SBB, logical operations, IMUL, shifts/rotates, INC/DEC/NEG/NOT, compare/test, Jcc/JMP, CMOV/SETcc, push/pop/leave/return, direct CALL, alignment NOPs |
 | State | 8/16/32/64-bit aliases including AH; 32-bit zero extension; modeled CF/PF/ZF/SF/OF and undefined-flag guards; bounded stack locals and saved registers |
 | Memory | Validated file-backed read-only PT_LOAD objects, RIP-relative addresses/loads, indexed integer loads, full-width pointer spills, same-object subtraction and explicit pointer results |
-| Control flow | Reachable direct branches, loops, byte-ownership overlap checks, explicit labels in generated C |
+| Control flow | Reachable direct branches, loops, direct calls, recursion and tail jumps to sized local functions, byte-ownership overlap checks, explicit labels in generated C |
 | Output | Guarded machine-level GNU C11 using `uint64_t` and `__int128`, or the same guards as edition-2024 Rust (`--lang rust`); no inline assembly or calls back into the original engine |
 
 An unsupported reachable instruction rejects the whole function and produces no
-C for it. Calls, writable/global state, external pointer arguments, indirect branches,
+C for it. Calls to external or unsized code (PLT stubs, other libraries), indirect
+calls, writable/global state, external pointer arguments, indirect branches,
 SIMD/floating point, atomics, exceptions, other ABIs/architectures, relocated data,
 DWARF recovery and structured variable/type/loop reconstruction remain outside
 this version. It does not implement Ghidra's SSA/p-code optimization pipeline or
@@ -87,6 +88,115 @@ embedded at the top of `decompiled.rs`, so the file builds on its own with
 bytes become `static` arrays. A guard failure calls `std::process::abort`, as
 the C `rg_fail` does. The default output is still C, byte-identical to before.
 
+## Readable Rust
+
+By default, `--lang rust` writes a function as readable Rust whenever
+`src/readable.rs` can express it exactly, and keeps the guarded form above
+otherwise; `--rust-style guarded` always keeps the guarded form. The C output
+and the set of accepted functions do not change: the guarded form is always
+built first, and its checks decide which functions are accepted. The manifest
+row says which form each function got (`rust_style`) and, for a guarded one, why
+the readable emitter declined it (`readable_error`).
+
+The readable emitter runs the lifted IR symbolically along every path from the
+entry. Arguments are `a0` (RDI) to `a5` (R9), and values are plain Rust
+expressions with wrapping arithmetic, conversions between `u8` to `u64`, and
+signed comparisons as `(x as i32) < (y as i32)`. Values larger than a few
+operations are bound with `let`. Branches become `if` blocks, conditional moves
+become `if` expressions, and natural loops become `loop` blocks over `let mut`
+variables named after the registers and stack slots they carry (`rax_1`,
+`local_18_1`), updated together at each back edge. A small example, from
+`fixtures/scalar.c` at -O2:
+
+```rust
+pub extern "C" fn decompiled_loop_xor_12d0_3a(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> u64 {
+    let v0: u64 = a2.wrapping_add(u64::from((a0 as u32) & 7).wrapping_add(1));
+    let mut rax_1: u64 = v0;
+    let mut rdx_1: u64 = a2;
+    let mut rsi_1: u64 = a1;
+    loop {
+        let v1: u64 = rsi_1 >> 3 ^ (rsi_1.wrapping_add(rsi_1) ^ rax_1);
+        let v2: bool = a2 == rax_1.wrapping_sub(1);
+        (rax_1, rdx_1, rsi_1) = (rax_1.wrapping_sub(1), rsi_1.wrapping_add(rsi_1) ^ rax_1, v1);
+        if v2 {
+            break;
+        }
+    }
+    return a4.wrapping_add(a5).wrapping_add(a3).wrapping_add(rsi_1);
+}
+```
+
+A function keeps the guarded form when the readable emitter cannot show that a
+value is defined. Its result and branch conditions must not depend on a
+register's entry value (other than the arguments) or the canary, except where a
+value cancels against itself; stack loads must read what the same path stored;
+and only the condition flags the last flag-setting operation defines exactly may
+be read. It also keeps the guarded form for memory outside its own stack frame
+(image tables included, for now), pointer results, recursion, irreducible
+loops, loops with more than one exit target, loops that call, push or pop, and
+functions over a 4,096-step budget. Direct calls to linked functions are
+inlined.
+
+`review/readable.py` checks the readable functions three ways on real shared
+libraries. It calls the readable Rust, the guarded C and the original function
+inside the library (loaded with ctypes) on the same vectors, and requires the
+same result or an abort from all three. The original can be called with any
+integer arguments because the readable emitter only accepts code that touches
+its own stack frame. `review/validate.py --rustc` checks the readable output of
+the scalar fixtures against independent formulas, as before.
+
+## Direct calls
+
+A direct `call` or a jump out of the function (a tail call) to the start of
+another sized function symbol links that function into the generated code,
+transitively, up to 64 functions; recursion and mutual recursion work. `call`
+pushes its return address on the modeled stack and jumps to the callee. `ret`
+in the entry frame returns the result as before; below it, `ret` pops the
+return address and continues only at a call's return site, aborting on any
+other value, so a callee that overwrites its return address cannot reach code
+the program never called. Two linked functions that decode the same bytes
+differently are rejected. Calls to PLT stubs, other libraries, unsized
+symbols or the middle of a function, and indirect calls, still reject the
+function.
+
+`review/validate.py` adds three call fixtures to `fixtures/scalar.c`
+(two calls to a helper, a recursive factorial, and a tail call) that pass at
+O0, O2 and O3 against independent formulas in the original, generated C and
+generated Rust arms: 51/51 supported and 18/18 rejects. Over the 369 system
+files used for the absolute-load check, linking adds 60 functions in 18 files
+and loses none, and the other 351 files give identical output.
+`review/rust_backend.py` finds generated C and Rust identical on all 384
+decompiled functions in those 18 files and on 121 functions across the test
+objects, libc, libm, libz, liblzma and five other libraries (112 vectors each).
+
+## Stack protector and aborting imports
+
+Code built with `-fstack-protector` reads the canary at `%fs:0x28`. That one
+operand is admitted, as a 64-bit read; every other segment override is still
+rejected. The runtime gives the canary an object of its own with no bytes: it
+can be spilled to the stack and reloaded, and subtracting, XORing or comparing
+it with itself gives zero with the flags of an equal subtraction, so the usual
+check passes. Any other use, such as dereferencing or returning it, aborts.
+
+A call or jump to the PLT stub of `__stack_chk_fail`, `__fortify_fail`,
+`__chk_fail`, `abort` or `__assert_fail` is generated as an abort: these end
+the process with SIGABRT, as the generated code does. A stub is recognized by
+its code (`endbr64`, then `jmp *GOT(%rip)`) and a JUMP_SLOT or GLOB_DAT
+relocation of that GOT slot against an undefined dynamic symbol of that name,
+which assumes no symbol interposition. Calls to any other import still reject
+the function, and a call at the end of a function must reach one of these.
+
+`review/stack_protector.py` builds `fixtures/stack-protector.c` with
+`-fstack-protector-all` at O0, O2 and O3 and calls the native original, the
+generated C and the generated Rust in forked children on 209 vectors each. All
+three match the independent formulas, including the vectors where `abort()`
+and `assert()` fire; the function that calls `puts()` is rejected. Over the
+369-file sample, these changes add 23 functions in 10 files and lose none; the
+other 359 files give identical output apart from the embedded runtime.
+`review/rust_backend.py` finds generated C and Rust identical on all 268
+decompiled functions in those 10 files. Most canary-checking functions also
+call other imports, which remain the largest single reason for rejection.
+
 ## Meaning of guarded C
 
 Each generated function takes six `uint64_t` SysV integer arguments. Its explicit
@@ -103,10 +213,40 @@ relocation writes and loader bookkeeping exclude entire intersecting objects.
 Dynamic REL/RELA/RELR metadata must be bounded, file-mapped and covered by validated
 allocated relocation sections. RELR tables are decoded with the
 [relocation-table parser](../relocation-tables/README.md), each entry an 8-byte
-relative write. Android packed tables, COPY, unknown relocation formats or dynamic
-tags make the image model unavailable; scalar functions still work.
+relative write. An `R_X86_64_COPY` write covers `st_size` bytes of its symbol,
+read from the dynamic symbol table: `DT_SYMTAB` must be the start of the one
+allocated, file-mapped `.dynsym` (with `DT_SYMENT` 24 when present) and the symbol
+index must lie inside it. Android packed tables, unknown relocation formats or
+dynamic tags make the image model unavailable; scalar functions still work.
 
-A raw numeric VMA never becomes a pointer. Image pointers retain an object ID and
+In an ET_EXEC image, whose addresses are fixed at link time, a load through an
+absolute displacement (`disp`, `disp(reg)` or `disp(,reg,scale)`, at most one
+register) also reads image memory when `disp` lies in a read-only object. The
+object is chosen by `disp` alone; the runtime requires the register to hold a
+number (never a pointer) and bounds-checks the final offset inside that object,
+which is the read the process makes at the same address. This is how code built
+without `-fpic` reads tables. ET_DYN code, LEA arithmetic, stores, two registers
+and displacements outside the image keep the ordinary model.
+
+`review/image_copy.py` links `fixtures/image-copy.c` three ways, each with COPY
+relocations for libc's `optind` and `stderr`: as a PIE, as a position-dependent
+`-fpie` executable (RIP-relative reads) and as a `-fno-pic` executable (absolute
+reads). The three `.rodata` readers must decompile in C and Rust and match
+independent results on 553 vectors: two against table formulas, and one with no
+index mask against the bytes the file maps at `table + i`, aborting exactly
+where that address leaves the segment. The function that reads the copied
+`optind` must be rejected. On this branch it passes. Over 2,002 system ELF files
+the image model now builds for the 36 that COPY blocked, and no surviving object
+overlaps any of their 162 COPY writes as `readelf` reports them; every other file
+builds the same number of objects or fails with the same error as before. Over all
+43 system ET_EXEC files and 326 ET_DYN files, absolute loads add two functions
+(`PyToken_OneChar` in python3.11 and `_PyToken_OneChar` in python3.13, whose
+generated C and Rust match Python's own `token` table on all 256 characters);
+no function was lost, and the other 367 files give identical output apart from the
+embedded runtime.
+
+A raw numeric VMA never becomes a pointer except as such an absolute ET_EXEC load
+address. Image pointers retain an object ID and
 offset; loads require the entire access inside that object, stores stay stack
 only, and partial pointer spills/bitwise operations remain guarded. Pointer
 arithmetic leaves flags unknown; same-object pointer CMP establishes equality
@@ -116,7 +256,8 @@ contents/within-object-offset comparisons; cross-function pointer identity is no
 preserved because each emitted function embeds its own objects.
 
 The modeled stack is 8192 bytes with entry alignment of 16 bytes. It supports
-ordinary leaf frames, spills and red-zone locals; deeper frames are unsupported.
+ordinary frames, spills and red-zone locals, and the frames of linked callees
+below them; a call chain deeper than the 4096 bytes below the entry frame aborts.
 Pointer arithmetic invalidates modeled flags rather than deriving them from an
 invented stack location. The C output deliberately keeps machine state and labels
 visible; it is executable low-level reconstruction, not polished source code.
@@ -151,7 +292,7 @@ functions and 18/18 rejects with the Rust arm on 523 vectors, and
 rust_backend.py matched 87/87 functions from libc, libm, libz, liblzma and eight
 other inputs, including 6 that read image memory and 2,240 matching aborts.
 
-The next stage is call/prototype modeling, followed by SSA/data-flow optimization
+The next stage is calls into other libraries and prototype modeling, followed by SSA/data-flow optimization
 and structured C recovery. Each needs an explicit
 contract and differential gates before broadening claims. This first subset has
 no whole-Ghidra speed claim; correctness and coverage precede a fair performance
