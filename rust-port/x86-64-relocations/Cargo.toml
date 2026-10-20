@@ -1,0 +1,25 @@
+[package]
+name = "ghidra-elf-x86-64-relocations"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-guided port of Ghidra's x86-64 ELF relocation handler"
+
+[dependencies]
+ghidra-elf = { path = "..", version = "0.1.0" }
+ghidra-elf-sections = { path = "../section-headers", version = "0.1.0" }
+ghidra-elf-dynamic = { path = "../dynamic-table", version = "0.1.0" }
+ghidra-elf-relocations = { path = "../relocation-tables", version = "0.1.0" }
+
+[lib]
+name = "ghidra_elf_x86_64_relocations"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ghidra-elf-x86-64-relocations"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = false

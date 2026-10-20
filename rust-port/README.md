@@ -37,6 +37,14 @@ adds Ghidra's next parse step: the `DT_REL`, `DT_RELA`, `DT_JMPREL` and `DT_RELR
 tables found through the dynamic table, then every relocation section, decoded
 into relocation records. Applying relocations stays out of scope.
 
+The seventh slice, the [Rust x86-64 relocation handler](x86-64-relocations/README.md),
+applies those records as Ghidra's `X86_64_ElfRelocationHandler` does, with its
+`%got` allocation from `ElfGotRelocationContext`: for each relocation it computes
+the bytes written, the reported status and byte length, and every log line and
+bookmark. Its Java oracle drives the original handler through small `Program`,
+`Memory` and load-helper proxies instead of a full program, so loader-side memory
+and symbol construction is replaced by a documented model shared by both sides.
+
 A [standalone Rust decompiler prototype](decompiler/README.md) now uses these
 components to discover x86-64 ELF functions, lift scalar instructions/control
 flow and emit guarded executable C without Java or the original native engine.
